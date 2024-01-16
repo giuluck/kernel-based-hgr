@@ -1,0 +1,6 @@
+lightning
+numpy
+pandas
+scikit-learn
+seaborn
+torch
