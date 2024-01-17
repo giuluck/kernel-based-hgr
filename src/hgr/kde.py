@@ -3,7 +3,7 @@ from math import sqrt, pi
 
 import torch
 
-from src.metrics.base import CorrelationMetric
+from src.hgr.hgr import HGR
 
 
 class KDE:
@@ -34,11 +34,11 @@ class KDE:
 
 
 @dataclass(frozen=True)
-class DensityHGR(CorrelationMetric):
+class DensityHGR(HGR):
     """Torch-based implementation of the HGR/CHI2 metric obtained from the official repository of "Fairness-Aware
     Learning for Continuous Attributes and Treatments" (https://github.com/criteo-research/continuous-fairness/)."""
 
-    chi2: bool = field()
+    chi2: bool = field(kw_only=True)
     """Whether to return the chi^2 approximation of the HGR or its actual value."""
 
     @staticmethod
@@ -57,7 +57,7 @@ class DensityHGR(CorrelationMetric):
         h2d /= h2d.sum()
         return h2d
 
-    def correlation(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         h2d = DensityHGR.joint_2(a, b)
         marginal_a = h2d.sum(dim=1).unsqueeze(1)
         marginal_b = h2d.sum(dim=0).unsqueeze(0)
