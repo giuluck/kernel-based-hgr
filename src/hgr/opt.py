@@ -6,7 +6,7 @@ import torch
 from scipy.optimize import minimize, NonlinearConstraint
 from scipy.stats import pearsonr
 
-from src.hgr.hgr import HGR
+from src.hgr import HGR
 
 
 @dataclass(frozen=True)
@@ -21,12 +21,6 @@ class KernelBasedHGR(HGR):
 
     eps: float = field(kw_only=True, default=1e-9)
     """The tolerance used to account for null standard deviation."""
-
-    smart_init: bool = field(kw_only=True, default=True)
-    """Whether to initialize x0 as [pearson(x, y) / std(x), 0, ..., 0, 1 / std(y), 0, ..., 0] or as a random vector."""
-
-    method: str = field(kw_only=True, default='trust-constr')
-    """The method to solve the constrained optimization problem, either 'SLSQP' or 'trust-constr'."""
 
     lasso: float = field(kw_only=True, default=0.0)
     """The amount of lasso penalization."""
@@ -80,30 +74,19 @@ class KernelBasedHGR(HGR):
         cst_hess = np.zeros(shape=(d, d), dtype=float)
         cst_hess[dx:, dx:] = 2 * g.T @ g / n
         constraint = NonlinearConstraint(
-            fun=lambda inp: np.var(g @ inp[dx:]),
+            fun=lambda inp: np.var(g @ inp[dx:], ddof=0),
             jac=lambda inp: np.concatenate(([0] * dx, 2 * g.T @ g @ inp[dx:] / n)),
             hess=lambda *_: cst_hess,
             lb=1,
             ub=1
         )
 
-        # choose an initial point based on the strategy
-        if self.smart_init:
-            # Start from the solution of the problem with degree_x = degree_y = 1, i.e.:
-            #   - alpha = [ r / std(x), 0, ..., 0 ]
-            #   -  beta = [ 1 / std(y), 0, ..., 0 ]
-            a = f[:, 0]
-            b = g[:, 0]
-            x0 = np.zeros(shape=d, dtype=float)
-            x0[0] = abs(pearsonr(a, b)[0]) / a.std()
-            x0[self.degree_a] = 1. / b.std()
-        else:
-            x0 = np.random.random(size=d)
-
-        # solve the problem and return the results
-        s = minimize(_fun, jac=True, hess=lambda *_: fun_hess, x0=x0, constraints=[constraint], method=self.method)
-        alpha, beta = s.x[:self.degree_a], s.x[self.degree_a:]
-        return alpha, beta
+        # set the initial point as [ 1 / std(F @ 1) | 1 / std(G @ 1) ] then solve the problem
+        alp0 = np.ones(dx) / f.sum(axis=1).std(ddof=0)
+        bet0 = np.ones(dy) / g.sum(axis=1).std(ddof=0)
+        x0 = np.concatenate((alp0, bet0))
+        s = minimize(_fun, jac=True, hess=lambda *_: fun_hess, x0=x0, constraints=[constraint], method='trust-constr')
+        return s.x[:dx], s.x[dx:]
 
     def kbhgr(self, a: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Computes the HGR in the same way as in self.correlation() returns the alpha and beta coefficients as well."""
@@ -117,18 +100,18 @@ class KernelBasedHGR(HGR):
         if self.degree_a == 1 and self.degree_b == 1:
             alpha, beta = np.ones(1), np.ones(1)
         elif self.degree_a == 1:
-            alpha = np.ones(1) / (a.std(ddof=1) + self.eps)
-            beta, _, _, _ = np.linalg.lstsq(g, f @ a, rcond=None)
+            alpha = np.ones(1) / (a.std(ddof=0) + self.eps)
+            beta, _, _, _ = np.linalg.lstsq(g, f @ alpha, rcond=None)
         elif self.degree_b == 1:
-            beta = np.ones(1) / (b.std(ddof=1) + self.eps)
+            beta = np.ones(1) / (b.std(ddof=0) + self.eps)
             alpha, _, _, _ = np.linalg.lstsq(f, g @ beta, rcond=None)
         else:
             alpha, beta = self._higher_order_coefficients(f=f, g=g)
         fa = f @ alpha
         gb = g @ beta
         correlation, _ = pearsonr(fa, gb)
-        alpha = alpha / fa.std(ddof=0)
-        beta = beta / gb.std(ddof=0)
+        alpha = alpha / (fa.std(ddof=0) + self.eps)
+        beta = beta / (gb.std(ddof=0) + self.eps)
         return abs(correlation), alpha, beta
 
     def correlation(self, a: np.ndarray, b: np.ndarray) -> float:

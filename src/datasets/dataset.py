@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Union, Literal, List
+from typing import Union, Literal, List, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -13,10 +13,23 @@ BackendOutput = Union[np.ndarray, pd.Series, pd.DataFrame, torch.Tensor]
 """The output backend types."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Dataset:
-    _data: pd.DataFrame = field(init=False, default_factory=pd.DataFrame)
-    """The dataset data."""
+    _mutable: Dict[str, Any] = field(init=False, default_factory=dict, kw_only=True)
+    """Internal structure to handle mutable values."""
+
+    def __post_init__(self):
+        self._mutable['data'] = self._load()
+
+    @property
+    def _data(self) -> pd.DataFrame:
+        """Internal data representation."""
+        return self._mutable['data']
+
+    @abstractmethod
+    def _load(self) -> pd.DataFrame:
+        """Internal abstract function to load the data."""
+        pass
 
     @property
     @abstractmethod
@@ -38,7 +51,7 @@ class Dataset:
 
     @property
     def input_names(self) -> List[str]:
-        return [column for column in self._data.columns if column != self.target_name]
+        return [column for column in self._data.dataframe.columns if column != self.target_name]
 
     @property
     @abstractmethod

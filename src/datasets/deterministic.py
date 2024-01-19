@@ -3,11 +3,12 @@ from dataclasses import dataclass, field
 from math import pi
 
 import numpy as np
+import pandas as pd
 
 from src.datasets.dataset import Dataset
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Deterministic(Dataset, ABC):
     size: int = field(kw_only=True, default=101)
     """The size of the dataset."""
@@ -24,7 +25,7 @@ class Deterministic(Dataset, ABC):
     seed: int = field(kw_only=True, default=0)
     """The random seed for generating the dataset."""
 
-    def __post_init__(self):
+    def _load(self) -> pd.DataFrame:
         rng = np.random.default_rng(seed=self.seed)
         # take x within the interval [-1, 1] then duplicate it in order to have swapped signs for y if necessary
         s = np.linspace(0, 1, num=self.size, endpoint=True) if self.linspace else rng.uniform(0, 1, size=self.size)
@@ -34,9 +35,11 @@ class Deterministic(Dataset, ABC):
         # add noise in protected and target data
         x += rng.normal(loc=0.0, scale=self.noise_x, size=len(x))
         y += rng.normal(loc=0.0, scale=self.noise_y, size=len(y))
-        # standardize input and normalize target, then append to the internal dataframe
-        self._data['x'] = (x - x.mean()) / x.std(ddof=0)
-        self._data['y'] = (y - y.mean()) / (y.max() - y.min())
+        # standardize input and normalize target, then build the dataframe
+        return pd.DataFrame({
+            'x': (x - x.mean()) / x.std(ddof=0),
+            'y': (y - y.min()) / (y.max() - y.min())
+        })
 
     @abstractmethod
     def function(self, x: np.ndarray) -> np.ndarray:
@@ -60,7 +63,7 @@ class Deterministic(Dataset, ABC):
         return 'y'
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Polynomial(Deterministic):
     degree_x: int = field(kw_only=True, default=1)
     """The degree of the protected data in the deterministic relationship."""
@@ -82,8 +85,9 @@ class Polynomial(Deterministic):
         return sign * np.power(1 - x ** self.degree_x, 1.0 / self.degree_y)
 
 
+@dataclass(frozen=True, kw_only=True)
 class NonLinear(Deterministic):
-    name: str = field(kw_only=True)
+    name: str = field(kw_only=True, default='sin')
     """The name of non-linear relationship (one in 'sin', 'cos', 'tan', 'log', 'exp')."""
 
     def function(self, x: np.ndarray) -> np.ndarray:

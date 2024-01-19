@@ -44,8 +44,8 @@ class DensityHGR(HGR):
     @staticmethod
     def joint_2(x: torch.Tensor, y: torch.Tensor, damping: float = 1e-10, eps: float = 1e-9) -> torch.Tensor:
         # add an eps value to avoid nan vectors in case of very degraded solutions
-        x = (x - x.mean()) / (x.std(dim=None) + eps)
-        y = (y - y.mean()) / (y.std(dim=None) + eps)
+        x = (x - x.mean()) / (x.std(dim=None, correction=0) + eps)
+        y = (y - y.mean()) / (y.std(dim=None, correction=0) + eps)
         data = torch.cat([x.unsqueeze(-1), y.unsqueeze(-1)], -1)
         joint_density = KDE(data)
         n_bins = int(min(50, 5. / joint_density.bandwidth))

@@ -6,21 +6,20 @@ import pandas as pd
 from src.datasets.dataset import Dataset
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Communities(Dataset):
-    continuous: bool = field(kw_only=True)
+    continuous: bool = field(kw_only=True, default=True)
 
-    def __post_init__(self):
+    def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'communities.csv') as filepath:
             data = pd.read_csv(filepath)
-        # standardize all features but race (already binary) and target (normalized)
+        # standardize all features but race (already binary) and target (target to normalize)
         for column, values in data.items():
-            if column == 'race':
-                self._data[column] = values
-            elif column == self.target_name:
-                self._data[column] = (values - values.mean()) / (values.max() - values.min())
-            else:
-                self._data[column] = (values - values.mean()) / values.std(ddof=0)
+            if column == 'violentPerPop':
+                data[column] = (values - values.mean()) / (values.max() - values.min())
+            elif column != 'race':
+                data[column] = (values - values.min()) / values.std(ddof=0)
+        return data
 
     @property
     def name(self) -> str:

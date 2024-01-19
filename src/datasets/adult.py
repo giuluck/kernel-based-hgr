@@ -6,20 +6,18 @@ import pandas as pd
 from src.datasets.dataset import Dataset
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Adult(Dataset):
-    continuous: bool = field(kw_only=True)
+    continuous: bool = field(kw_only=True, default=True)
 
-    def __post_init__(self):
+    def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'adult.csv') as filepath:
             data = pd.read_csv(filepath).astype(float)
         # standardize the numerical features while keep the other as they are (categorical binary)
-        numerical_features = {'age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week'}
-        for column, values in data.items():
-            if column in numerical_features:
-                self._data[column] = (values - values.mean()) / values.std(ddof=0)
-            else:
-                self._data[column] = values
+        for column in ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week']:
+            values = data[column]
+            data[column] = (values - values.mean()) / values.std(ddof=0)
+        return data
 
     @property
     def name(self) -> str:
