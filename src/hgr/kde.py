@@ -32,15 +32,6 @@ class KDE:
         gaussian_values = torch.exp(-((data - train).norm(dim=-1) ** 2 / (self.bandwidth ** 2) / 2))
         return gaussian_values.mean(dim=-1) / self.bandwidth / self.SQRT_PI
 
-
-@dataclass(frozen=True)
-class DensityHGR(HGR):
-    """Torch-based implementation of the HGR/CHI2 metric obtained from the official repository of "Fairness-Aware
-    Learning for Continuous Attributes and Treatments" (https://github.com/criteo-research/continuous-fairness/)."""
-
-    chi2: bool = field(kw_only=True)
-    """Whether to return the chi^2 approximation of the HGR or its actual value."""
-
     @staticmethod
     def joint_2(x: torch.Tensor, y: torch.Tensor, damping: float = 1e-10, eps: float = 1e-9) -> torch.Tensor:
         # add an eps value to avoid nan vectors in case of very degraded solutions
@@ -57,12 +48,32 @@ class DensityHGR(HGR):
         h2d /= h2d.sum()
         return h2d
 
+
+@dataclass(frozen=True)
+class DensityHGR(HGR):
+    """Torch-based implementation of the HGR metric obtained from the official repository of "Fairness-Aware
+    Learning for Continuous Attributes and Treatments" (https://github.com/criteo-research/continuous-fairness/)."""
+
+    name: str = field(kw_only=True, default='HGR-KDE')
+
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        h2d = DensityHGR.joint_2(a, b)
+        h2d = KDE.joint_2(a, b)
         marginal_a = h2d.sum(dim=1).unsqueeze(1)
         marginal_b = h2d.sum(dim=0).unsqueeze(0)
         q = h2d / (torch.sqrt(marginal_a) * torch.sqrt(marginal_b))
-        if self.chi2:
-            return (q ** 2).sum(dim=[0, 1]) - 1.0
-        else:
-            return torch.linalg.svd(q)[1][1]
+        return torch.linalg.svd(q)[1][1]
+
+
+@dataclass(frozen=True)
+class ChiSquare(HGR):
+    """Torch-based implementation of the CHI2 metric obtained from the official repository of "Fairness-Aware
+    Learning for Continuous Attributes and Treatments" (https://github.com/criteo-research/continuous-fairness/)."""
+
+    name: str = field(kw_only=True, default='CHI^2')
+
+    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        h2d = KDE.joint_2(a, b)
+        marginal_a = h2d.sum(dim=1).unsqueeze(1)
+        marginal_b = h2d.sum(dim=0).unsqueeze(0)
+        q = h2d / (torch.sqrt(marginal_a) * torch.sqrt(marginal_b))
+        return (q ** 2).sum(dim=[0, 1]) - 1.0

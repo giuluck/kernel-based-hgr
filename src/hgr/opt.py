@@ -13,13 +13,15 @@ from src.hgr import HGR
 class KernelBasedHGR(HGR):
     """Computes the Kernel-based HGR by solving a constrained least square problem using a minimization solver."""
 
+    name: str = field(kw_only=True, default='HGR-KB')
+
     degree_a: int = field(kw_only=True)
     """The kernel degree for the first variable."""
 
     degree_b: int = field(kw_only=True)
     """The kernel degree for the first variable."""
 
-    eps: float = field(kw_only=True, default=1e-9)
+    eps: float = field(kw_only=True, default=0.0)
     """The tolerance used to account for null standard deviation."""
 
     lasso: float = field(kw_only=True, default=0.0)

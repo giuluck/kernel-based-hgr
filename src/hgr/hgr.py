@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -8,6 +8,9 @@ import torch
 @dataclass(frozen=True)
 class HGR:
     """Interface for an object that computes the HGR correlation differentiable way."""
+
+    name: str = field(kw_only=True)
+    """The name of the HGR metric."""
 
     @abstractmethod
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

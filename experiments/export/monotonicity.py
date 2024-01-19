@@ -6,13 +6,6 @@ from tqdm import tqdm
 from src.datasets import Communities
 from src.hgr import KernelBasedHGR
 
-dataset = Communities(continuous=True)
-degrees_a = np.arange(7) + 1
-degrees_b = np.arange(7) + 1
-kernels = False
-vmin = None
-vmax = None
-
 if __name__ == '__main__':
     # set graphics context
     sns.set_context('notebook')
