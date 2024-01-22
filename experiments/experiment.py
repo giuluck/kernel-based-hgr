@@ -54,8 +54,8 @@ class Experiment(Serializable):
                         experiment = config.pop('experiment')
                     except KeyError:
                         raise AssertionError(f"Error when loading experiment '{self.filename}'")
-                    assert metric.config == self.metric.config, f"Error when loading experiment '{self.filename}'"
-                    assert dataset.config == self.dataset.config, f"Error when loading experiment '{self.filename}'"
+                    assert metric == self.metric.config, f"Error when loading experiment '{self.filename}'"
+                    assert dataset == self.dataset.config, f"Error when loading experiment '{self.filename}'"
                     assert experiment == self.name, f"Error when loading experiment '{self.filename}'"
                     assert 'timestamp' in config, f"Error when loading experiment '{self.filename}'"
                     self._cached_result.update(config)

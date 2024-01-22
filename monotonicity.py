@@ -1,15 +1,9 @@
 import argparse
-import importlib.resources
-
-import numpy as np
-import seaborn as sns
-from matplotlib import pyplot as plt
-from tqdm import tqdm
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear, Communities, Adult
-from src.hgr import KernelBasedHGR
 
+# list all the valid datasets
 datasets = dict(
     adult=Adult(continuous=True),
     communities=Communities(continuous=True),
@@ -65,13 +59,13 @@ parser.add_argument(
 )
 parser.add_argument(
     '-f',
-    '--format',
+    '--formats',
     type=str,
     nargs='*',
     help='the extensions of the files to save'
 )
 parser.add_argument(
-    '--print',
+    '--verbose',
     action='store_true',
     help='whether to print the results'
 )
@@ -81,43 +75,7 @@ parser.add_argument(
     help='whether to plot the results'
 )
 
-# parse arguments and build experiments
-args = parser.parse_args()
-experiments = [
-    CorrelationExperiment(dataset=datasets[args.dataset], metric=KernelBasedHGR(degree_a=degree_a, degree_b=degree_b))
-    for degree_a in args.degrees_a
-    for degree_b in args.degrees_b
-]
-
-# run experiments and store results
-results = [experiment.correlation for experiment in tqdm(experiments)]
-results = np.reshape(results, (len(args.degrees_a), len(args.degrees_b)))
-
-# set graphics context
-sns.set_context('notebook')
-sns.set_style('whitegrid')
-# plot results
-fig = plt.figure(figsize=(16, 9), tight_layout=True)
-ax = fig.gca()
-col = ax.imshow(results.transpose()[::-1], cmap=plt.colormaps['gray'], vmin=args.vmin, vmax=args.vmax)
-fig.colorbar(col, ax=ax)
-ax.set_xlabel('Degree A')
-ax.set_xticks(np.arange(len(args.degrees_a) + 1) - 0.5)
-ax.set_xticklabels([''] * (len(args.degrees_a) + 1))
-ax.set_xticks(np.arange(len(args.degrees_a)), minor=True)
-ax.set_xticklabels(args.degrees_a, minor=True)
-ax.set_ylabel('Degree B')
-ax.set_yticks(np.arange(len(args.degrees_b) + 1) - 0.5)
-ax.set_yticklabels([''] * (len(args.degrees_b) + 1))
-ax.set_yticks(np.arange(len(args.degrees_b)), minor=True)
-ax.set_yticklabels(args.degrees_b[::-1], minor=True)
-ax.grid(True, which='major')
-
-for extension in args.format:
-    filename = f'monotonicity_{args.dataset}.{extension}'
-    with importlib.resources.path('experiments.exports', filename) as file:
-        fig.savefig(file)
-if args.print:
-    print(results)
-if args.plot:
-    fig.show()
+# parse arguments, build experiments, then export the results
+args = parser.parse_args().__dict__
+args['dataset'] = datasets[args['dataset']]
+CorrelationExperiment.export_monotonicity(**args)
