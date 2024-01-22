@@ -5,6 +5,8 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Any
 
+import pytorch_lightning as pl
+
 from src.datasets import Dataset
 from src.hgr import HGR
 from src.serializable import Serializable
@@ -20,6 +22,9 @@ class Experiment(Serializable):
     metric: HGR = field()
     """The HGR metric used in the experiment."""
 
+    seed: int = field(default=0)
+    """The random seed used in the experiment."""
+
     _cached_result: Dict[str, Any] = field(init=False, repr=False, default_factory=dict)
     """The experiment result."""
 
@@ -30,7 +35,7 @@ class Experiment(Serializable):
         pass
 
     @abstractmethod
-    def _run(self) -> Dict[str, Any]:
+    def _compute(self) -> Dict[str, Any]:
         """Runs the experiment and returns its results."""
         pass
 
@@ -39,10 +44,11 @@ class Experiment(Serializable):
         """Returns the result of the experiment. If the results were not cached yet, tries to load it from the stored
         files or, if the file does not exist, runs the experiment."""
         if len(self._cached_result) == 0:
-            with importlib.resources.path('experiments.results', self.filename) as file:
+            with importlib.resources.path('experiments.results', self.fullname) as file:
                 if not file.exists():
+                    pl.seed_everything(seed=self.seed, workers=True)
                     start = time.time()
-                    result = self._run()
+                    result = self._compute()
                     gap = time.time() - start
                     self._cached_result.update({**result, 'time': gap, 'timestamp': start})
                     with open(file, mode='w') as out_file:
@@ -55,24 +61,24 @@ class Experiment(Serializable):
                         dataset = config.pop('dataset')
                         experiment = config.pop('experiment')
                     except KeyError:
-                        raise AssertionError(f"Error when loading experiment '{self.filename}'")
-                    assert metric == self.metric.config, f"Error when loading experiment '{self.filename}'"
-                    assert dataset == self.dataset.config, f"Error when loading experiment '{self.filename}'"
-                    assert experiment == self.name, f"Error when loading experiment '{self.filename}'"
-                    assert 'timestamp' in config, f"Error when loading experiment '{self.filename}'"
+                        raise AssertionError(f"Error when loading experiment '{self.fullname}'")
+                    assert metric == self.metric.config, f"Error when loading experiment '{self.fullname}'"
+                    assert dataset == self.dataset.config, f"Error when loading experiment '{self.fullname}'"
+                    assert experiment == self.name, f"Error when loading experiment '{self.fullname}'"
+                    assert 'timestamp' in config, f"Error when loading experiment '{self.fullname}'"
                     self._cached_result.update(config)
         return self._cached_result
 
     @property
     def config(self) -> Dict[str, Any]:
         return {
-            'experiment': self.name,
             'dataset': self.dataset.config,
             'metric': self.metric.config,
+            'experiment': self.name,
+            'seed': self.seed,
             **self._result
         }
 
     @property
-    def filename(self) -> str:
-        """The experiment name that can be used for file naming."""
-        return f'{self.name}_d={self.dataset.fullname}_m={self.metric.fullname}.json'
+    def fullname(self) -> str:
+        return f'{self.name}_d={self.dataset.fullname}_m={self.metric.fullname}_s={self.seed}.json'

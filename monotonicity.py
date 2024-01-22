@@ -1,7 +1,12 @@
 import argparse
+import logging
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear, Communities, Adult
+
+log = logging.getLogger("lightning_fabric")
+log.propagate = False
+log.setLevel(logging.ERROR)
 
 # list all the valid datasets
 datasets = dict(
@@ -32,7 +37,7 @@ parser.add_argument(
     '--degrees_a',
     type=int,
     nargs='+',
-    required=True,
+    default=[1, 2, 3, 4, 5, 6, 7],
     help='the degrees for the a variable'
 )
 parser.add_argument(
@@ -40,7 +45,7 @@ parser.add_argument(
     '--degrees_b',
     type=int,
     nargs='+',
-    required=True,
+    default=[1, 2, 3, 4, 5, 6, 7],
     help='the degrees for the b variable'
 )
 parser.add_argument(
@@ -62,6 +67,7 @@ parser.add_argument(
     '--formats',
     type=str,
     nargs='*',
+    default=['png'],
     help='the extensions of the files to save'
 )
 parser.add_argument(
@@ -78,4 +84,4 @@ parser.add_argument(
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
 args['dataset'] = datasets[args['dataset']]
-CorrelationExperiment.export_monotonicity(**args)
+CorrelationExperiment.monotonicity(**args)

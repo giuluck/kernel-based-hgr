@@ -2,6 +2,7 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import Union, Literal, List, Dict, Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -88,6 +89,11 @@ class Dataset(Serializable):
     def excluded(self, backend: BackendType = 'pandas') -> BackendOutput:
         """The protected feature vector."""
         return Dataset._to_backend(v=self._data[self.excluded_name], backend=backend)
+
+    @abstractmethod
+    def plot(self, ax: plt.Axes, **kwargs):
+        """Plots the excluded and the target feature in the given ax with the given arguments."""
+        pass
 
     def __len__(self) -> int:
         return len(self.data)

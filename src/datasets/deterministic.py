@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from math import pi
 from typing import Dict, Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -57,6 +58,9 @@ class Deterministic(Dataset, ABC):
     @property
     def target_name(self) -> str:
         return 'y'
+
+    def plot(self, ax: plt.Axes, **kwargs):
+        ax.plot(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -113,3 +117,13 @@ class NonLinear(Deterministic):
             return np.tanh(20 * x - 10)
         else:
             raise AssertionError(f"Unknown non-linear function name '{self.fn}'")
+
+    def plot(self, ax: plt.Axes, **kwargs):
+        # custom plot for 'sign' function to show the non-continuity
+        if self.fn == 'sign':
+            x = self.excluded(backend='numpy')
+            y = self.target(backend='numpy')
+            ax.plot(x[x < 0], y[x < 0], **kwargs)
+            ax.plot(x[x > 0], y[x > 0], **kwargs)
+        else:
+            super().plot(ax=ax, **kwargs)

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any
 
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from src.datasets.dataset import Dataset
 
@@ -41,3 +42,6 @@ class Communities(Dataset):
     @property
     def target_name(self) -> str:
         return 'violentPerPop'
+
+    def plot(self, ax: plt.Axes, **kwargs):
+        ax.scatter(self.excluded(backend='numpy'), self.excluded(backend='numpy'), **kwargs)

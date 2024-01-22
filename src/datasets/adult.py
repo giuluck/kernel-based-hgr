@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any
 
 import pandas as pd
+from matplotlib import pyplot as plt
 
 from src.datasets.dataset import Dataset
 
@@ -39,3 +40,6 @@ class Adult(Dataset):
     @property
     def target_name(self) -> str:
         return 'income'
+
+    def plot(self, ax: plt.Axes, **kwargs):
+        ax.scatter(self.excluded(backend='numpy'), self.excluded(backend='numpy'), **kwargs)
