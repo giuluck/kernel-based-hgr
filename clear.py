@@ -3,10 +3,6 @@ import importlib.resources
 import os
 import re
 
-from experiments import utils
-
-EXPERIMENTS = ['monotonicity', 'correlation', 'learning']
-
 # build argument parser
 parser = argparse.ArgumentParser(description='Test the Kernel-based HGR on a given dataset')
 parser.add_argument(
@@ -21,7 +17,6 @@ parser.add_argument(
     '--experiment',
     type=str,
     nargs='+',
-    choices=EXPERIMENTS,
     help='the experiment (or list of such) to clear'
 )
 parser.add_argument(
@@ -29,7 +24,6 @@ parser.add_argument(
     '--dataset',
     type=str,
     nargs='+',
-    choices=list(utils.DATASETS),
     help='the dataset (or list of such) to clear'
 )
 parser.add_argument(
@@ -37,7 +31,6 @@ parser.add_argument(
     '--metric',
     type=str,
     nargs='+',
-    choices=list(utils.METRICS),
     help='the metric (or list of such) to clear'
 )
 parser.add_argument(

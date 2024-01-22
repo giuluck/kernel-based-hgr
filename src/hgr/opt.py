@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Tuple, Dict, Any
 
 import numpy as np
 import torch
@@ -21,6 +21,10 @@ class KernelBasedHGR(HGR):
 
     degree_b: int = field(kw_only=True)
     """The kernel degree for the first variable."""
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        return dict(degree_a=self.degree_a, degree_b=self.degree_b)
 
     @property
     def name(self) -> str:
@@ -74,8 +78,7 @@ class KernelBasedHGR(HGR):
         s = minimize(_fun, jac=True, hess=lambda *_: fun_hess, x0=x0, constraints=[constraint], method='trust-constr')
         return s.x[:dx], s.x[dx:]
 
-    def kbhgr(self, a: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Computes the HGR in the same way as in self.correlation() returns the alpha and beta coefficients as well."""
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> float:
         # build the kernel matrices
         f = np.stack([a ** d - np.mean(a ** d) for d in np.arange(self.degree_a) + 1], axis=1)
         g = np.stack([b ** d - np.mean(b ** d) for d in np.arange(self.degree_b) + 1], axis=1)
@@ -98,10 +101,7 @@ class KernelBasedHGR(HGR):
         correlation, _ = pearsonr(fa, gb)
         alpha = alpha / (fa.std(ddof=0) + EPS)
         beta = beta / (gb.std(ddof=0) + EPS)
-        return abs(correlation), alpha, beta
-
-    def correlation(self, a: np.ndarray, b: np.ndarray) -> float:
-        return self.kbhgr(a=a, b=b)[0]
+        return dict(correlation=abs(correlation), alpha=list(alpha), beta=list(beta))
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         def standardize(t: torch.Tensor) -> torch.Tensor:

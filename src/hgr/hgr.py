@@ -1,12 +1,15 @@
 from abc import abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Dict, Any
 
 import numpy as np
 import torch
 
+from src.serializable import Serializable
+
 
 @dataclass(frozen=True)
-class HGR:
+class HGR(Serializable):
     """Interface for an object that computes the HGR correlation differentiable way."""
 
     @property
@@ -20,8 +23,8 @@ class HGR:
         """Computes the correlation between two tensors <a> and <b> in a differentiable way."""
         pass
 
-    def correlation(self, a: np.ndarray, b: np.ndarray) -> float:
-        """Computes the correlation between two numpy vectors <a> and <b>."""
-        a = torch.tensor(a, dtype=torch.float)
-        b = torch.tensor(b, dtype=torch.float)
-        return self(a=a, b=b).numpy(force=True).item()
+    @abstractmethod
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
+        """Computes the correlation between two numpy vectors <a> and <b> and returns a dictionary of type
+        {correlation: <float>, **additional_results}."""
+        pass

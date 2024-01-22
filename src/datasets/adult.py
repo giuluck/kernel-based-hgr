@@ -1,5 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass, field
+from typing import Dict, Any
 
 import pandas as pd
 
@@ -18,6 +19,10 @@ class Adult(Dataset):
             values = data[column]
             data[column] = (values - values.mean()) / values.std(ddof=0)
         return data
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        return dict(continuous=self.continuous)
 
     @property
     def name(self) -> str:

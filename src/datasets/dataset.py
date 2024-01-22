@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from src.serializable import Serializable
+
 BackendType = Literal['numpy', 'pandas', 'torch']
 """The possible backend types."""
 
@@ -14,7 +16,7 @@ BackendOutput = Union[np.ndarray, pd.Series, pd.DataFrame, torch.Tensor]
 
 
 @dataclass(frozen=True, kw_only=True)
-class Dataset:
+class Dataset(Serializable):
     _mutable: Dict[str, Any] = field(init=False, default_factory=dict, kw_only=True)
     """Internal structure to handle mutable values."""
 

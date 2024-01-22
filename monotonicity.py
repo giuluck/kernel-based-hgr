@@ -6,7 +6,22 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from experiments import utils, CorrelationExperiment
+from experiments import CorrelationExperiment
+from src.datasets import Polynomial, NonLinear, Communities, Adult
+from src.hgr import KernelBasedHGR
+
+datasets = dict(
+    adult=Adult(continuous=True),
+    communities=Communities(continuous=True),
+    linear=Polynomial(degree_x=1, degree_y=1, noise=0.0),
+    x_square=Polynomial(degree_x=2, degree_y=1, noise=0.0),
+    y_square=Polynomial(degree_x=1, degree_y=2, noise=0.0),
+    circle=Polynomial(degree_x=2, degree_y=2, noise=0.0),
+    sign=NonLinear(fn='sign', noise=0.0),
+    relu=NonLinear(fn='relu', noise=0.0),
+    sin=NonLinear(fn='sin', noise=0.0),
+    tanh=NonLinear(fn='tanh', noise=0.0)
+)
 
 # build argument parser
 parser = argparse.ArgumentParser(description='Test the Kernel-based HGR on a given dataset')
@@ -14,7 +29,7 @@ parser.add_argument(
     '-d',
     '--dataset',
     type=str,
-    choices=list(utils.DATASETS),
+    choices=list(datasets),
     default='communities',
     help='the dataset on which to run the experiment'
 )
@@ -68,11 +83,11 @@ parser.add_argument(
 
 # parse arguments and build experiments
 args = parser.parse_args()
-experiments = CorrelationExperiment.cartesian_product(
-    datasets=[args.dataset],
-    degrees_a=args.degrees_a,
-    degrees_b=args.degrees_b
-)
+experiments = [
+    CorrelationExperiment(dataset=datasets[args.dataset], metric=KernelBasedHGR(degree_a=degree_a, degree_b=degree_b))
+    for degree_a in args.degrees_a
+    for degree_b in args.degrees_b
+]
 
 # run experiments and store results
 results = [experiment.correlation for experiment in tqdm(experiments)]

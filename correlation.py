@@ -7,28 +7,28 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 from src.datasets import Polynomial, NonLinear, Dataset
-from src.hgr import HGR, KernelBasedHGR
+from src.hgr import HGR, KernelBasedHGR, AdversarialHGR, ChiSquare, DensityHGR
 
-datasets = [
-    lambda n: Polynomial(degree_x=1, degree_y=1, noise=n),
-    lambda n: Polynomial(degree_x=2, degree_y=1, noise=n),
-    lambda n: Polynomial(degree_x=3, degree_y=1, noise=n),
-    lambda n: Polynomial(degree_x=1, degree_y=2, noise=n),
-    lambda n: Polynomial(degree_x=2, degree_y=2, noise=n),
-    lambda n: NonLinear(name='sign', noise=n),
-    lambda n: NonLinear(name='relu', noise=n),
-    lambda n: NonLinear(name='sin', noise=n),
-    lambda n: NonLinear(name='tanh', noise=n)
-]
+datasets = dict(
+    linear=lambda n: Polynomial(degree_x=1, degree_y=1, noise=n),
+    x_square=lambda n: Polynomial(degree_x=2, degree_y=1, noise=n),
+    x_cubic=lambda n: Polynomial(degree_x=3, degree_y=1, noise=n),
+    y_square=lambda n: Polynomial(degree_x=1, degree_y=2, noise=n),
+    circle=lambda n: Polynomial(degree_x=2, degree_y=2, noise=n),
+    sign=lambda n: NonLinear(fn='sign', noise=n),
+    relu=lambda n: NonLinear(fn='relu', noise=n),
+    sin=lambda n: NonLinear(fn='sin', noise=n),
+    tanh=lambda n: NonLinear(fn='tanh', noise=n)
+)
 
-metrics = [
-    KernelBasedHGR(degree_a=1, degree_b=1, name='PEARS'),
-    # KernelBasedHGR(degree_a=5, degree_b=5, name='HGR-KB'),
-    # AdversarialHGR(name='HGR-NN'),
-    # DensityHGR(name='HGR-KDE'),
-    # ChiSquare(name='CHI^2'),
+metrics = dict(
+    pears=KernelBasedHGR(degree_a=1, degree_b=1),
+    kb=KernelBasedHGR(degree_a=5, degree_b=5),
+    nn=AdversarialHGR(),
+    kde=DensityHGR(),
+    chi=ChiSquare(),
     # TODO: RDC
-]
+)
 
 noises = np.arange(7) / 20.0
 tests = 5
@@ -43,7 +43,7 @@ def correlation(metric: HGR, dataset: Callable[[float], Dataset]) -> pd.DataFram
         b = data.target(backend='numpy')
         for seed in range(tests):
             pl.seed_everything(seed, workers=True)
-            output[noise][seed] = metric.correlation(a=a, b=b)
+            output[noise][seed] = metric.correlation(a=a, b=b)['correlation']
     return output
 
 

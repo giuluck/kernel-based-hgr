@@ -1,31 +1,32 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from math import pi
+from typing import Dict, Any
 
 import numpy as np
 import pandas as pd
 
 from src.datasets.dataset import Dataset
 
+SIZE: int = 101
+"""The size of the dataset."""
+
+LINSPACE: bool = True
+"""Whether to build the protected data from a linear space, or sample it uniformly."""
+
+SEED: int = 0
+"""The random seed for generating the dataset."""
+
 
 @dataclass(frozen=True, kw_only=True)
 class Deterministic(Dataset, ABC):
-    size: int = field(kw_only=True, default=101)
-    """The size of the dataset."""
-
     noise: float = field(kw_only=True, default=0.0)
     """The amount of noise to be introduced in the target data."""
 
-    linspace: bool = field(kw_only=True, default=True)
-    """Whether to build the protected data from a linear space, or sample it uniformly."""
-
-    seed: int = field(kw_only=True, default=0)
-    """The random seed for generating the dataset."""
-
     def _load(self) -> pd.DataFrame:
-        rng = np.random.default_rng(seed=self.seed)
+        rng = np.random.default_rng(seed=SEED)
         # take x within the interval [-1, 1] then duplicate it in order to have swapped signs for y if necessary
-        s = np.linspace(0, 1, num=self.size, endpoint=True) if self.linspace else rng.uniform(0, 1, size=self.size)
+        s = np.linspace(0, 1, num=SIZE, endpoint=True) if LINSPACE else rng.uniform(0, 1, size=SIZE)
         x = np.concatenate((s, s[::-1]))
         # build y according to the function then normalize it in order to add a correct relative amount of noise
         y = self.function(x)
@@ -40,6 +41,10 @@ class Deterministic(Dataset, ABC):
     def function(self, x: np.ndarray) -> np.ndarray:
         """Builds the target data given the protected (input) data."""
         pass
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        return dict(noise=self.noise)
 
     @property
     def classification(self) -> bool:
@@ -68,7 +73,7 @@ class Polynomial(Deterministic):
 
     @property
     def name(self) -> str:
-        return f'deterministic {self.degree_x}-{self.degree_y}'
+        return f'poly-{self.degree_x}-{self.degree_y}-{self.noise}'
 
     def function(self, x: np.ndarray) -> np.ndarray:
         # rescale x from [0, 1] to [-1, 1]
@@ -76,27 +81,30 @@ class Polynomial(Deterministic):
         # build y so that the following relationship holds: x^dx + y^dy = 1
         # in order to do that, compute y as: y = (1 - x^dx) ^ (1 / dy)
         # then, if the degree of y is odd swap the signs of the first half, otherwise take positive signs only
-        sign = np.array([-1 if self.degree_y % 2 == 0 else 1] * self.size + [1] * self.size)
+        sign = np.array([-1 if self.degree_y % 2 == 0 else 1] * SIZE + [1] * SIZE)
         return -sign * np.power(1 - x ** self.degree_x, 1.0 / self.degree_y)
 
 
 @dataclass(frozen=True, kw_only=True)
 class NonLinear(Deterministic):
-    name: str = field(kw_only=True, default='relu')
+    fn: str = field(kw_only=True, default='relu')
     """The name of non-linear relationship (one in 'sign', 'relu', 'sin', 'tanh')."""
 
+    def name(self) -> str:
+        return f'{self.fn}-{self.noise}'
+
     def function(self, x: np.ndarray) -> np.ndarray:
-        if self.name == 'sign':
+        if self.fn == 'sign':
             # apply the function to the input vector rescaled from [0, 1] to [-1, 1]
             return np.sign(2 * x - 1)
-        elif self.name == 'relu':
+        elif self.fn == 'relu':
             # apply the function to the input vector rescaled from [0, 1] to [-1, 1]
             return np.maximum(0, 2 * x - 1)
-        elif self.name == 'sin':
+        elif self.fn == 'sin':
             # apply the function to the input vector rescaled from [0, 1] to [0, 2 * pi]
             return np.sin(2 * pi * x)
-        elif self.name == 'tanh':
+        elif self.fn == 'tanh':
             # apply the function to the input vector rescaled from [0, 1] to [-10, 10]
             return np.tanh(20 * x - 10)
         else:
-            raise AssertionError(f"Unknown non-linear function name '{self.name}'")
+            raise AssertionError(f"Unknown non-linear function name '{self.fn}'")

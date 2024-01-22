@@ -1,6 +1,8 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from math import sqrt, pi
+from typing import Dict, Any
 
+import numpy as np
 import torch
 
 from src.hgr.hgr import HGR
@@ -58,6 +60,15 @@ class DensityHGR(HGR):
     def name(self) -> str:
         return 'kde'
 
+    @property
+    def config(self) -> Dict[str, Any]:
+        return dict()
+
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
+        a = torch.tensor(a, dtype=torch.float)
+        b = torch.tensor(b, dtype=torch.float)
+        return dict(correlation=self(a=a, b=b).numpy(force=True).item())
+
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         h2d = KDE.joint_2(a, b)
         marginal_a = h2d.sum(dim=1).unsqueeze(1)
@@ -74,6 +85,15 @@ class ChiSquare(HGR):
     @property
     def name(self) -> str:
         return 'chi2'
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        return dict()
+
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
+        a = torch.tensor(a, dtype=torch.float)
+        b = torch.tensor(b, dtype=torch.float)
+        return dict(correlation=self(a=a, b=b).numpy(force=True).item())
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         h2d = KDE.joint_2(a, b)

@@ -1,5 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass, field
+from typing import Dict, Any
 
 import pandas as pd
 
@@ -20,6 +21,10 @@ class Communities(Dataset):
             elif column != 'race':
                 data[column] = (values - values.min()) / values.std(ddof=0)
         return data
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        return dict(continuous=self.continuous)
 
     @property
     def name(self) -> str:
