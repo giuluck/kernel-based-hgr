@@ -15,7 +15,7 @@ class AdversarialHGR(HGR):
 
     @property
     def config(self) -> Dict[str, Any]:
-        return dict()
+        return dict(name=self.name)
 
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
         raise NotImplementedError()

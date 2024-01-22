@@ -24,11 +24,11 @@ class KernelBasedHGR(HGR):
 
     @property
     def config(self) -> Dict[str, Any]:
-        return dict(degree_a=self.degree_a, degree_b=self.degree_b)
+        return dict(name=self.name, degree_a=self.degree_a, degree_b=self.degree_b)
 
     @property
     def name(self) -> str:
-        return f'kb-{self.degree_a}-{self.degree_b}'
+        return 'kb'
 
     @staticmethod
     def higher_order_coefficients(f: np.ndarray, g: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:

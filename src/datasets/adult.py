@@ -22,11 +22,11 @@ class Adult(Dataset):
 
     @property
     def config(self) -> Dict[str, Any]:
-        return dict(continuous=self.continuous)
+        return dict(name=self.name, excluded='continuous' if self.continuous else 'categorical')
 
     @property
     def name(self) -> str:
-        return f"adult-{'continuous' if self.continuous else 'categorical'}"
+        return 'adult'
 
     @property
     def classification(self) -> bool:

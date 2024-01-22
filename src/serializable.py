@@ -10,3 +10,8 @@ class Serializable:
     def config(self) -> Dict[str, Any]:
         """Returns the object configuration."""
         pass
+
+    @property
+    def fullname(self) -> str:
+        """Returns the full name of an object based on its configuration."""
+        return '-'.join([str(v) for v in self.config.values()])

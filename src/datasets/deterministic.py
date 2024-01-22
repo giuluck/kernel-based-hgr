@@ -43,10 +43,6 @@ class Deterministic(Dataset, ABC):
         pass
 
     @property
-    def config(self) -> Dict[str, Any]:
-        return dict(noise=self.noise)
-
-    @property
     def classification(self) -> bool:
         return False
 
@@ -72,8 +68,12 @@ class Polynomial(Deterministic):
     """The degree of the target data in the deterministic relationship."""
 
     @property
+    def config(self) -> Dict[str, Any]:
+        return dict(name=self.name, degree_x=self.degree_x, degree_y=self.degree_y, noise=self.noise)
+
+    @property
     def name(self) -> str:
-        return f'poly-{self.degree_x}-{self.degree_y}-{self.noise}'
+        return 'poly'
 
     def function(self, x: np.ndarray) -> np.ndarray:
         # rescale x from [0, 1] to [-1, 1]
@@ -90,8 +90,13 @@ class NonLinear(Deterministic):
     fn: str = field(kw_only=True, default='relu')
     """The name of non-linear relationship (one in 'sign', 'relu', 'sin', 'tanh')."""
 
+    @property
+    def config(self) -> Dict[str, Any]:
+        return dict(name=self.name, fn=self.fn, noise=self.noise)
+
+    @property
     def name(self) -> str:
-        return f'{self.fn}-{self.noise}'
+        return 'nonlinear'
 
     def function(self, x: np.ndarray) -> np.ndarray:
         if self.fn == 'sign':

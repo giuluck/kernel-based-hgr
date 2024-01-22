@@ -41,8 +41,10 @@ class Experiment(Serializable):
         if len(self._cached_result) == 0:
             with importlib.resources.path('experiments.results', self.filename) as file:
                 if not file.exists():
+                    start = time.time()
                     result = self._run()
-                    self._cached_result.update({**result, 'timestamp': time.time()})
+                    gap = time.time() - start
+                    self._cached_result.update({**result, 'time': gap, 'timestamp': start})
                     with open(file, mode='w') as out_file:
                         json.dump(self.config, fp=out_file, indent=2)
                 else:
@@ -73,4 +75,4 @@ class Experiment(Serializable):
     @property
     def filename(self) -> str:
         """The experiment name that can be used for file naming."""
-        return f'{self.name}_d={self.dataset.name}_m={self.metric.name}.json'
+        return f'{self.name}_d={self.dataset.fullname}_m={self.metric.fullname}.json'

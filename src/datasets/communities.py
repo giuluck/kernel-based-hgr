@@ -24,11 +24,11 @@ class Communities(Dataset):
 
     @property
     def config(self) -> Dict[str, Any]:
-        return dict(continuous=self.continuous)
+        return dict(name=self.name, excluded='continuous' if self.continuous else 'categorical')
 
     @property
     def name(self) -> str:
-        return f"communities-{'continuous' if self.continuous else 'categorical'}"
+        return 'communities'
 
     @property
     def classification(self) -> bool:
