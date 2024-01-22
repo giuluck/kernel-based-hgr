@@ -7,7 +7,9 @@ from src.hgr.hgr import HGR
 
 @dataclass(frozen=True)
 class AdversarialHGR(HGR):
-    name: str = field(kw_only=True, default='HGR-NN')
+    @property
+    def name(self) -> str:
+        return 'nn'
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError()

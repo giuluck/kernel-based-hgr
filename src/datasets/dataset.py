@@ -84,7 +84,7 @@ class Dataset:
         return Dataset._to_backend(v=self._data[self.target_name], backend=backend)
 
     def excluded(self, backend: BackendType = 'pandas') -> BackendOutput:
-        """The protected feature vector"""
+        """The protected feature vector."""
         return Dataset._to_backend(v=self._data[self.excluded_name], backend=backend)
 
     def __len__(self) -> int:

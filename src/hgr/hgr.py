@@ -9,8 +9,11 @@ import torch
 class HGR:
     """Interface for an object that computes the HGR correlation differentiable way."""
 
-    name: str = field(kw_only=True)
-    """The name of the HGR metric."""
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """The name of the HGR metric."""
+        pass
 
     @abstractmethod
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

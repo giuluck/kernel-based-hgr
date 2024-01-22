@@ -54,7 +54,9 @@ class DensityHGR(HGR):
     """Torch-based implementation of the HGR metric obtained from the official repository of "Fairness-Aware
     Learning for Continuous Attributes and Treatments" (https://github.com/criteo-research/continuous-fairness/)."""
 
-    name: str = field(kw_only=True, default='HGR-KDE')
+    @property
+    def name(self) -> str:
+        return 'kde'
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         h2d = KDE.joint_2(a, b)
@@ -69,7 +71,9 @@ class ChiSquare(HGR):
     """Torch-based implementation of the CHI2 metric obtained from the official repository of "Fairness-Aware
     Learning for Continuous Attributes and Treatments" (https://github.com/criteo-research/continuous-fairness/)."""
 
-    name: str = field(kw_only=True, default='CHI^2')
+    @property
+    def name(self) -> str:
+        return 'chi2'
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         h2d = KDE.joint_2(a, b)

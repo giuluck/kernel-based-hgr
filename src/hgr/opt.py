@@ -8,12 +8,13 @@ from scipy.stats import pearsonr
 
 from src.hgr import HGR
 
+EPS: float = 0.0
+"""The tolerance used to account for null standard deviation."""
+
 
 @dataclass(frozen=True)
 class KernelBasedHGR(HGR):
     """Computes the Kernel-based HGR by solving a constrained least square problem using a minimization solver."""
-
-    name: str = field(kw_only=True, default='HGR-KB')
 
     degree_a: int = field(kw_only=True)
     """The kernel degree for the first variable."""
@@ -21,13 +22,12 @@ class KernelBasedHGR(HGR):
     degree_b: int = field(kw_only=True)
     """The kernel degree for the first variable."""
 
-    eps: float = field(kw_only=True, default=0.0)
-    """The tolerance used to account for null standard deviation."""
+    @property
+    def name(self) -> str:
+        return f'kb-{self.degree_a}-{self.degree_b}'
 
-    lasso: float = field(kw_only=True, default=0.0)
-    """The amount of lasso penalization."""
-
-    def _higher_order_coefficients(self, f: np.ndarray, g: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    @staticmethod
+    def higher_order_coefficients(f: np.ndarray, g: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Computes the kernel-based hgr for higher order degrees."""
         # compute the kernel matrices
         n, dx = f.shape
@@ -43,28 +43,12 @@ class KernelBasedHGR(HGR):
         #   - hess:   [  2 * F.T @ F | -2 * F.T @ G ]
         #             [ -2 * G.T @ F |  2 * G.T @ G ] =
         #           =    2 * [F  -G].T @ [F  -G]
-        #
-        # plus, add the lasso penalizer
-        #   - func:     norm_1([alpha, beta])
-        #   - grad:   [ sign(alpha) | sign(beta) ]
-        #   - hess:   [      0      |      0     ]
-        #             [      0      |      0     ]
-        if self.lasso == 0:
-            def _fun(inp):
-                alp, bet = inp[:dx], inp[dx:]
-                diff = f @ alp - g @ bet
-                obj_func = diff @ diff
-                obj_grad = 2 * fg.T @ diff
-                return obj_func, obj_grad
-        else:
-            def _fun(inp):
-                alp, bet = inp[:dx], inp[dx:]
-                diff = f @ alp - g @ bet
-                obj_func = diff @ diff
-                obj_grad = 2 * fg.T @ diff
-                pen_func = np.abs(inp).sum()
-                pen_grad = np.sign(inp)
-                return obj_func + self.lasso * pen_func, obj_grad + self.lasso * pen_grad
+        def _fun(inp):
+            alp, bet = inp[:dx], inp[dx:]
+            diff = f @ alp - g @ bet
+            obj_func = diff @ diff
+            obj_grad = 2 * fg.T @ diff
+            return obj_func, obj_grad
 
         fun_hess = 2 * fg.T @ fg
 
@@ -102,18 +86,18 @@ class KernelBasedHGR(HGR):
         if self.degree_a == 1 and self.degree_b == 1:
             alpha, beta = np.ones(1), np.ones(1)
         elif self.degree_a == 1:
-            alpha = np.ones(1) / (a.std(ddof=0) + self.eps)
+            alpha = np.ones(1) / (a.std(ddof=0) + EPS)
             beta, _, _, _ = np.linalg.lstsq(g, f @ alpha, rcond=None)
         elif self.degree_b == 1:
-            beta = np.ones(1) / (b.std(ddof=0) + self.eps)
+            beta = np.ones(1) / (b.std(ddof=0) + EPS)
             alpha, _, _, _ = np.linalg.lstsq(f, g @ beta, rcond=None)
         else:
-            alpha, beta = self._higher_order_coefficients(f=f, g=g)
+            alpha, beta = self.higher_order_coefficients(f=f, g=g)
         fa = f @ alpha
         gb = g @ beta
         correlation, _ = pearsonr(fa, gb)
-        alpha = alpha / (fa.std(ddof=0) + self.eps)
-        beta = beta / (gb.std(ddof=0) + self.eps)
+        alpha = alpha / (fa.std(ddof=0) + EPS)
+        beta = beta / (gb.std(ddof=0) + EPS)
         return abs(correlation), alpha, beta
 
     def correlation(self, a: np.ndarray, b: np.ndarray) -> float:
@@ -122,7 +106,7 @@ class KernelBasedHGR(HGR):
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         def standardize(t: torch.Tensor) -> torch.Tensor:
             t_std, t_mean = torch.std_mean(t, correction=0)
-            return (t - t_mean) / (t_std + self.eps)
+            return (t - t_mean) / (t_std + EPS)
 
         # build the kernel matrices
         f = torch.stack([a ** d - torch.mean(a ** d) for d in np.arange(self.degree_a) + 1], dim=1)
@@ -145,7 +129,7 @@ class KernelBasedHGR(HGR):
             alpha, _, _, _ = torch.linalg.lstsq(f, gb, driver='gelsd')
             fa = standardize(f @ alpha)
         else:
-            alpha, beta = self._higher_order_coefficients(f=f.numpy(force=True), g=g.numpy(force=True))
+            alpha, beta = self.higher_order_coefficients(f=f.numpy(force=True), g=g.numpy(force=True))
             fa = standardize(f @ torch.tensor(alpha))
             gb = standardize(g @ torch.tensor(beta))
         # return the correlation as the absolute value of the vector product (since the vectors are standardized)

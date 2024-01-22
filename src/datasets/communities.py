@@ -23,7 +23,7 @@ class Communities(Dataset):
 
     @property
     def name(self) -> str:
-        return f"communities {'continuous' if self.continuous else 'categorical'}"
+        return f"communities-{'continuous' if self.continuous else 'categorical'}"
 
     @property
     def classification(self) -> bool:
