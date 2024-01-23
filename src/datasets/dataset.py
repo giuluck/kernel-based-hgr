@@ -1,6 +1,6 @@
 from abc import abstractmethod
-from dataclasses import dataclass, field
-from typing import Union, Literal, List, Dict, Any
+from dataclasses import dataclass
+from typing import Union, Literal, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,18 +16,13 @@ BackendOutput = Union[np.ndarray, pd.Series, pd.DataFrame, torch.Tensor]
 """The output backend types."""
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class Dataset(Serializable):
-    _mutable: Dict[str, Any] = field(init=False, default_factory=dict, kw_only=True)
-    """Internal structure to handle mutable values."""
-
-    def __post_init__(self):
-        self._mutable['data'] = self._load()
 
     @property
     def _data(self) -> pd.DataFrame:
         """Internal data representation."""
-        return self._mutable['data']
+        return self._lazy_initialization(attribute='data', function=self._load)
 
     @abstractmethod
     def _load(self) -> pd.DataFrame:

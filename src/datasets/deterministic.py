@@ -19,9 +19,9 @@ SEED: int = 0
 """The random seed for generating the dataset."""
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class Deterministic(Dataset, ABC):
-    noise: float = field(kw_only=True, default=0.0)
+    noise: float = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=0.0)
     """The amount of noise to be introduced in the target data."""
 
     def _load(self) -> pd.DataFrame:
@@ -63,16 +63,16 @@ class Deterministic(Dataset, ABC):
         ax.plot(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class Polynomial(Deterministic):
-    degree_x: int = field(kw_only=True, default=1)
+    degree_x: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=1)
     """The degree of the protected data in the deterministic relationship."""
 
-    degree_y: int = field(kw_only=True, default=1)
+    degree_y: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=1)
     """The degree of the target data in the deterministic relationship."""
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name, degree_x=self.degree_x, degree_y=self.degree_y, noise=self.noise)
 
     @property
@@ -89,13 +89,13 @@ class Polynomial(Deterministic):
         return -sign * np.power(1 - x ** self.degree_x, 1.0 / self.degree_y)
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class NonLinear(Deterministic):
-    fn: str = field(kw_only=True, default='relu')
+    fn: str = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default='relu')
     """The name of non-linear relationship (one in 'sign', 'relu', 'sin', 'tanh')."""
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name, fn=self.fn, noise=self.noise)
 
     @property

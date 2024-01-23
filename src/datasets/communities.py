@@ -2,15 +2,15 @@ import importlib.resources
 from dataclasses import dataclass, field
 from typing import Dict, Any
 
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from src.datasets.dataset import Dataset
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class Communities(Dataset):
-    continuous: bool = field(kw_only=True, default=True)
+    continuous: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=True)
 
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'communities.csv') as filepath:
@@ -24,7 +24,7 @@ class Communities(Dataset):
         return data
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name, excluded='continuous' if self.continuous else 'categorical')
 
     @property

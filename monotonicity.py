@@ -49,14 +49,14 @@ parser.add_argument(
     help='the degrees for the b variable'
 )
 parser.add_argument(
-    '-vmin',
+    '-m',
     '--vmin',
     type=float,
     nargs='?',
     help='the min value used in the color bar (or None if empty)'
 )
 parser.add_argument(
-    '-vmax',
+    '-M',
     '--vmax',
     type=float,
     nargs='?',
@@ -79,6 +79,13 @@ parser.add_argument(
     '--plot',
     action='store_true',
     help='whether to plot the results'
+)
+parser.add_argument(
+    '-s',
+    '--save-time',
+    type=int,
+    default=60,
+    help='the number of seconds after which to store the computed results'
 )
 
 # parse arguments, build experiments, then export the results

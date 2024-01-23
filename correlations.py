@@ -3,7 +3,7 @@ import logging
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear
-from src.hgr import KernelBasedHGR
+from src.hgr import KernelBasedHGR, DensityHGR, ChiSquare, RDC
 
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
@@ -27,9 +27,9 @@ metrics = {
     'prs': ('PEARS', KernelBasedHGR(degree_a=1, degree_b=1)),
     'krn': ('HGR-KB', KernelBasedHGR(degree_a=5, degree_b=5)),
     # 'adv': ('HGR-NN', AdversarialHGR()),
-    # 'kde': ('HGR-KDE', DensityHGR()),
-    # 'chi': ('CHI^2', ChiSquare()),
-    # TODO: RDC
+    'kde': ('HGR-KDE', DensityHGR()),
+    'chi': ('CHI^2', ChiSquare()),
+    'rdc': ('RDC', RDC())
 }
 
 # build argument parser

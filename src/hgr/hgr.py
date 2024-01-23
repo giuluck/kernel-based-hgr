@@ -8,7 +8,7 @@ import torch
 from src.serializable import Serializable
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class HGR(Serializable):
     """Interface for an object that computes the HGR correlation differentiable way."""
 

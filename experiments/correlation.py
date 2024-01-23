@@ -15,16 +15,16 @@ from src.datasets.deterministic import Deterministic
 from src.hgr import KernelBasedHGR, HGR
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class CorrelationExperiment(Experiment):
     """An experiment where the correlation between two variables is computed."""
+
+    def _compute(self) -> Dict[str, Any]:
+        return self.metric.correlation(a=self.a, b=self.b)
 
     @property
     def name(self) -> str:
         return 'correlation'
-
-    def _compute(self) -> Dict[str, Any]:
-        return self.metric.correlation(a=self.a, b=self.b)
 
     @property
     def a(self) -> np.ndarray:
@@ -49,22 +49,33 @@ class CorrelationExperiment(Experiment):
                      vmax: Optional[float] = None,
                      formats: Iterable[str] = (),
                      verbose: bool = False,
-                     plot: bool = False):
+                     plot: bool = False,
+                     save_time: int = 60):
         # run experiments
-        results = np.ndarray((len(degrees_a), len(degrees_b)))
-        pbar = tqdm(total=len(degrees_a) * len(degrees_b))
-        for i, da in enumerate(degrees_a):
+        experiments = CorrelationExperiment.doe(
+            file_name='monotonicity.json',
+            save_time=save_time,
+            dataset=[dataset],
+            seed=[0],
+            metric=[KernelBasedHGR(degree_a=da, degree_b=db) for da in degrees_a for db in degrees_b]
+        )
+        # build results
+        results = {}
+        for experiment in experiments:
+            assert isinstance(experiment, CorrelationExperiment), "Wrong experiment returned"
+            assert isinstance(experiment.metric, KernelBasedHGR), "Wrong metric returned"
+            results[experiment.metric.degree_a, experiment.metric.degree_b] = experiment.correlation
+        output = np.zeros((len(degrees_a), len(degrees_b)))
+        for i, da in enumerate(degrees_a[::-1]):
             for j, db in enumerate(degrees_b):
-                experiment = CorrelationExperiment(dataset=dataset, metric=KernelBasedHGR(degree_a=da, degree_b=db))
-                results[i, j] = experiment.correlation
-                pbar.update(n=1)
-        pbar.close()
+                output[i, j] = results[(db, da)]
+        degrees_b = degrees_b[::-1]
         # plot results
         sns.set_context('notebook')
         sns.set_style('whitegrid')
         fig = plt.figure(figsize=(12, 9), tight_layout=True)
         ax = fig.gca()
-        col = ax.imshow(results.transpose()[::-1], cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
+        col = ax.imshow(output, cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
         fig.colorbar(col, ax=ax)
         ax.set_xlabel('Degree A')
         ax.set_xticks(np.arange(len(degrees_a) + 1) - 0.5)
@@ -75,12 +86,12 @@ class CorrelationExperiment(Experiment):
         ax.set_yticks(np.arange(len(degrees_b) + 1) - 0.5)
         ax.set_yticklabels([''] * (len(degrees_b) + 1))
         ax.set_yticks(np.arange(len(degrees_b)), minor=True)
-        ax.set_yticklabels(degrees_b[::-1], minor=True)
+        ax.set_yticklabels(degrees_b, minor=True)
         ax.grid(True, which='major')
         # store, print, and plot if necessary
         for extension in formats:
-            name = f'monotonicity_{dataset.fullname}.{extension}'
-            with importlib.resources.path('experiments.exports', name) as file:
+            name = f'monotonicity_{dataset.key}.{extension}'
+            with importlib.resources.path('experiments.results', name) as file:
                 fig.savefig(file, bbox_inches='tight')
         if verbose:
             print(results)
@@ -119,16 +130,27 @@ class CorrelationExperiment(Experiment):
         sns.set_style('whitegrid')
         rows = int(np.ceil((len(datasets) + 1) / columns))
         fig = plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)
-        handles, labels = [], []
+        handles, labels, ax = [], [], None
         for i, (name, data) in enumerate(results.groupby('dataset')):
-            ax = fig.add_subplot(rows, columns, i + 1)
-            sns.lineplot(data=data, x='noise', y='correlation', hue='metric', style='metric')
+            ax = fig.add_subplot(rows, columns, i + 1, sharex=ax, sharey=ax)
+            sns.lineplot(
+                data=data,
+                x='noise',
+                y='correlation',
+                hue='metric',
+                style='metric',
+                estimator='mean',
+                errorbar='sd'
+            )
             handles, labels = ax.get_legend_handles_labels()
             ax.get_legend().remove()
-            ax.set_xticks(noises)
+            # ax.set_xticks(noises)
+            ax.set_xlabel('Noise Level $\sigma$')
+            ax.set_ylabel(None)
+            ax.set_ylim((-0.1, 1.1))
             # plot the original data without noise
-            sub_ax = inset_axes(ax, width='30%', height='30%', loc='lower left')
-            datasets[name](0.0).plot(ax=sub_ax, color='tab:blue')
+            sub_ax = inset_axes(ax, width='30%', height='20%', loc='lower left')
+            datasets[name](0.0).plot(ax=sub_ax, color='black')
             sub_ax.set_xticks([])
             sub_ax.set_yticks([])
         ax = fig.add_subplot(rows, columns, rows * columns)
@@ -142,7 +164,7 @@ class CorrelationExperiment(Experiment):
         # store, print, and plot if necessary
         for extension in ([] if formats is None else formats):
             name = f'correlations.{extension}'
-            with importlib.resources.path('experiments.exports', name) as file:
+            with importlib.resources.path('experiments.results', name) as file:
                 fig.savefig(file, bbox_inches='tight')
         if verbose:
             print(results)

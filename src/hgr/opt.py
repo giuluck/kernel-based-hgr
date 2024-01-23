@@ -12,18 +12,18 @@ EPS: float = 0.0
 """The tolerance used to account for null standard deviation."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class KernelBasedHGR(HGR):
-    """Computes the Kernel-based HGR by solving a constrained least square problem using a minimization solver."""
+    """Kernel-based HGR computed by solving a constrained least square problem using a minimization solver."""
 
-    degree_a: int = field(kw_only=True)
+    degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The kernel degree for the first variable."""
 
-    degree_b: int = field(kw_only=True)
+    degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The kernel degree for the first variable."""
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name, degree_a=self.degree_a, degree_b=self.degree_b)
 
     @property

@@ -4,6 +4,4 @@ venv
 temp
 wandb
 experiments/results/*
-experiments/exports/*
 !experiments/results/*.py
-!experiments/exports/*.py

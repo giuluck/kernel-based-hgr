@@ -8,9 +8,9 @@ from matplotlib import pyplot as plt
 from src.datasets.dataset import Dataset
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class Adult(Dataset):
-    continuous: bool = field(kw_only=True, default=True)
+    continuous: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=True)
 
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'adult.csv') as filepath:
@@ -22,7 +22,7 @@ class Adult(Dataset):
         return data
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name, excluded='continuous' if self.continuous else 'categorical')
 
     @property

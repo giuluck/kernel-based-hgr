@@ -59,17 +59,15 @@ args = parser.parse_args()
 if args.pattern is not None:
     pattern = args.pattern
 else:
-    pattern = ''
+    pattern = '.*'
     if args.experiment is not None:
-        pattern += f".*({'|'.join(args.experiment)}).*"
+        pattern = f"({'|'.join(args.experiment)}).*"
     if args.dataset is not None:
-        pattern += f".*({'|'.join(args.dataset)}).*"
+        pattern += f"d=({'|'.join(args.dataset)}).*"
     if args.metric is not None:
-        pattern += f"({'|'.join(args.metric)}).*"
+        pattern += f"m=({'|'.join(args.metric)}).*"
     if args.format is not None:
-        pattern += f".({'|'.join(args.format)})"
-    if pattern == '':
-        pattern = '.*'
+        pattern += f"({'|'.join(args.format)})"
 pattern = re.compile(pattern)
 
 # remove all files that match the pattern (excluding python files) in the two sub-packages
@@ -77,9 +75,9 @@ if not args.no_exports:
     with importlib.resources.files('experiments.exports') as folder:
         for file in os.listdir(folder):
             if pattern.match(file) and file != '__pycache__' and not file.endswith('.py'):
-                os.remove(f'{folder}/{file}')
+                os.remove(f'{folder}{os.sep}{file}')
 if not args.no_results:
     with importlib.resources.files('experiments.results') as folder:
         for file in os.listdir(folder):
             if pattern.match(file) and file != '__pycache__' and not file.endswith('.py'):
-                os.remove(f'{folder}/{file}')
+                os.remove(f'{folder}{os.sep}{file}')
