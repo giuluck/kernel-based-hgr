@@ -5,7 +5,7 @@ import numpy as np
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear
-from src.hgr import KernelBasedHGR, DensityHGR, ChiSquare, RDC, SingleKernelHGR
+from src.hgr import KernelBasedHGR, DensityHGR, ChiSquare, RDC, SingleKernelHGR, AdversarialHGR
 
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
@@ -27,7 +27,7 @@ datasets = dict(
 metrics = {
     'dkn': ('HGR-KB', KernelBasedHGR(degree_a=5, degree_b=5)),
     'skn': ('HGR-SK', SingleKernelHGR(degree=5)),
-    # 'adv': ('HGR-NN', AdversarialHGR()),
+    'adv': ('HGR-NN', AdversarialHGR()),
     'kde': ('HGR-KDE', DensityHGR()),
     'chi': ('CHI^2', ChiSquare()),
     'rdc': ('RDC', RDC()),
@@ -112,9 +112,10 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
-print('Starting Experiment: CORRELATIONS')
+print("Starting experiment 'correlations'...")
 for k, v in args.items():
     print('  >', k, '-->', v)
+print()
 data = {k: datasets[k] for k in args.pop('datasets')}
 metr = {k: v for k, v in [metrics[mt] for mt in args.pop('metrics')]}
 CorrelationExperiment.correlations(datasets=data, metrics=metr, **args)

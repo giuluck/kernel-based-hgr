@@ -90,8 +90,9 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
-print('Starting Experiment: MONOTONICITY')
+print("Starting experiment 'monotonicity'...")
 for k, v in args.items():
     print('  >', k, '-->', v)
+print()
 args['dataset'] = datasets[args['dataset']]
 CorrelationExperiment.monotonicity(**args)
