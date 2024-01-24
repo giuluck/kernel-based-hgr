@@ -1,6 +1,6 @@
 import importlib.resources
 import itertools
-import json
+import pickle
 import time
 from abc import abstractmethod
 from dataclasses import dataclass, field
@@ -81,11 +81,11 @@ class Experiment(Serializable):
         their results in the given file every <save_time> seconds."""
         assert len(configuration) > 0, "Empty configuration passed"
         # retrieve the path of the results and load the json dictionary if the file exists
-        with importlib.resources.path('experiments.results', file_name) as path:
+        with importlib.resources.path('experiments.results', f'{file_name}.pkl') as path:
             pass
         if path.exists():
-            with open(path, 'r') as file:
-                results = json.load(fp=file)
+            with open(path, 'rb') as file:
+                results = pickle.load(file=file)
         else:
             results = {}
         # iterate through the configuration to create the combinatorial design
@@ -124,8 +124,8 @@ class Experiment(Serializable):
                 # otherwise, flag that results must be saved at the end of the doe
                 if time.time() - gap >= save_time:
                     # dump the file before writing to check if it is json-compliant
-                    dump = json.dumps(results, indent=2)
-                    with open(path, 'w') as file:
+                    dump = pickle.dumps(results)
+                    with open(path, 'wb') as file:
                         file.write(dump)
                     gap = time.time()
                     to_save = False
@@ -141,7 +141,7 @@ class Experiment(Serializable):
         # if necessary, save the results at the end of the doe, then return the experiments
         if to_save:
             # dump the file before writing to check if it is json-compliant
-            dump = json.dumps(results, indent=2)
-            with open(path, 'w') as file:
+            dump = pickle.dumps(results)
+            with open(path, 'wb') as file:
                 file.write(dump)
         return experiments

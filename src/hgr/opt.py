@@ -103,7 +103,7 @@ class KernelBasedHGR(HGR):
         correlation, _ = pearsonr(fa, gb)
         alpha = alpha / (fa.std(ddof=0) + EPS)
         beta = beta / (gb.std(ddof=0) + EPS)
-        return dict(correlation=abs(correlation), alpha=list(alpha), beta=list(beta))
+        return dict(correlation=abs(correlation), alpha=alpha, beta=beta)
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         def standardize(t: torch.Tensor) -> torch.Tensor:
@@ -169,9 +169,15 @@ class SingleKernelHGR(HGR):
         correlation_b, _ = pearsonr(fa_b, g @ beta_b)
         # choose the best correlation and return
         if correlation_a > correlation_b:
-            correlation, alpha, beta = correlation_a, list(alpha_a), [beta_a] + [0] * (self.degree - 1)
+            correlation = correlation_a
+            alpha = alpha_a
+            beta = np.zeros(self.degree)
+            beta[0] = beta_a
         else:
-            correlation, alpha, beta = correlation_b, [alpha_b] + [0] * (self.degree - 1), list(beta_b)
+            correlation = correlation_b
+            alpha = np.zeros(self.degree)
+            alpha[0] = alpha_a
+            beta = beta_b
         return dict(correlation=correlation, alpha=alpha, beta=beta)
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

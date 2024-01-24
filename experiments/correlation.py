@@ -54,7 +54,7 @@ class CorrelationExperiment(Experiment):
                      save_time: int = 60):
         # run experiments
         experiments = CorrelationExperiment.doe(
-            file_name='monotonicity.json',
+            file_name='monotonicity',
             save_time=save_time,
             dataset=dataset,
             seed=0,
@@ -107,7 +107,7 @@ class CorrelationExperiment(Experiment):
                      save_time: int = 60):
         # run experiments
         experiments = CorrelationExperiment.doe(
-            file_name='correlations.json',
+            file_name='correlations',
             save_time=save_time,
             dataset={(k, n): fn(n) for k, fn in datasets.items() for n in noises},
             metric=metrics,

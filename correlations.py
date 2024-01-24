@@ -5,7 +5,7 @@ import numpy as np
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear
-from src.hgr import KernelBasedHGR, DensityHGR, ChiSquare, RDC, SingleKernelHGR, AdversarialHGR
+from src.hgr import KernelBasedHGR, DensityHGR, ChiSquare, RandomizedDependencyCoefficient, SingleKernelHGR, AdversarialHGR
 
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
@@ -30,7 +30,7 @@ metrics = {
     'adv': ('HGR-NN', AdversarialHGR()),
     'kde': ('HGR-KDE', DensityHGR()),
     'chi': ('CHI^2', ChiSquare()),
-    'rdc': ('RDC', RDC()),
+    'rdc': ('RDC', RandomizedDependencyCoefficient()),
     'prs': ('PEARS', KernelBasedHGR(degree_a=1, degree_b=1)),
 }
 

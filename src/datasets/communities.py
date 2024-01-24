@@ -25,7 +25,7 @@ class Communities(Dataset):
 
     @property
     def configuration(self) -> Dict[str, Any]:
-        return dict(name=self.name, excluded='continuous' if self.continuous else 'categorical')
+        return dict(name=self.name, continuous=self.continuous)
 
     @property
     def name(self) -> str:

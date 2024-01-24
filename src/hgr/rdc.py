@@ -9,7 +9,7 @@ from src.hgr.hgr import HGR
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class RDC(HGR):
+class RandomizedDependencyCoefficient(HGR):
     @property
     def name(self) -> str:
         return 'rdc'
@@ -22,8 +22,7 @@ class RDC(HGR):
         return {'correlation': rdc(x=a, y=b)}
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        coefficient = rdc(x=a.numpy(force=True), y=b.numpy(force=True))
-        return torch.tensor(coefficient, dtype=torch.float)
+        raise AssertionError("RDC metric does not provide gradients")
 
 
 # The following code is obtained from the official repository of

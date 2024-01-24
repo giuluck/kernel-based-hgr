@@ -1,5 +1,5 @@
 from src.hgr.hgr import HGR
 from src.hgr.kde import DensityHGR, ChiSquare
-from src.hgr.net import AdversarialHGR
+from src.hgr.adv import AdversarialHGR
 from src.hgr.opt import KernelBasedHGR, SingleKernelHGR
-from src.hgr.rdc import RDC
+from src.hgr.rdc import RandomizedDependencyCoefficient
