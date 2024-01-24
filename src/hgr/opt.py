@@ -23,12 +23,12 @@ class KernelBasedHGR(HGR):
     """The kernel degree for the first variable."""
 
     @property
-    def configuration(self) -> Dict[str, Any]:
-        return dict(name=self.name, degree_a=self.degree_a, degree_b=self.degree_b)
-
-    @property
     def name(self) -> str:
         return 'kb'
+
+    @property
+    def configuration(self) -> Dict[str, Any]:
+        return dict(name=self.name, degree_a=self.degree_a, degree_b=self.degree_b)
 
     @staticmethod
     def higher_order_coefficients(f: np.ndarray, g: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -89,11 +89,13 @@ class KernelBasedHGR(HGR):
         if self.degree_a == 1 and self.degree_b == 1:
             alpha, beta = np.ones(1), np.ones(1)
         elif self.degree_a == 1:
-            alpha = np.ones(1) / (a.std(ddof=0) + EPS)
-            beta, _, _, _ = np.linalg.lstsq(g, f @ alpha, rcond=None)
+            std = a.std(ddof=0) + EPS
+            alpha = np.ones(1) / std
+            beta, _, _, _ = np.linalg.lstsq(g, f[:, 0] / std, rcond=None)
         elif self.degree_b == 1:
-            beta = np.ones(1) / (b.std(ddof=0) + EPS)
-            alpha, _, _, _ = np.linalg.lstsq(f, g @ beta, rcond=None)
+            std = b.std(ddof=0) + EPS
+            beta = np.ones(1) / std
+            alpha, _, _, _ = np.linalg.lstsq(f, g[:, 0] / std, rcond=None)
         else:
             alpha, beta = self.higher_order_coefficients(f=f, g=g)
         fa = f @ alpha
@@ -134,3 +136,61 @@ class KernelBasedHGR(HGR):
             gb = standardize(g @ torch.tensor(beta))
         # return the correlation as the absolute value of the vector product (since the vectors are standardized)
         return torch.abs(fa @ gb)
+
+
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
+class SingleKernelHGR(HGR):
+    """Kernel-based HGR computed using one kernel only for both variables and then taking the maximal correlation."""
+
+    degree: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The kernel degree for the variables."""
+
+    @property
+    def name(self) -> str:
+        return 'sk'
+
+    @property
+    def configuration(self) -> Dict[str, Any]:
+        return dict(name=self.name, degree=self.degree)
+
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
+        # build the kernel matrices
+        f = np.stack([a ** d - np.mean(a ** d) for d in np.arange(self.degree) + 1], axis=1)
+        g = np.stack([b ** d - np.mean(b ** d) for d in np.arange(self.degree) + 1], axis=1)
+        # compute correlation for kernel on alpha
+        beta_a = 1 / (b.std(ddof=0) + EPS)
+        gb_a = g[:, 0] * beta_a
+        alpha_a, _, _, _ = np.linalg.lstsq(f, gb_a, rcond=None)
+        correlation_a, _ = pearsonr(f @ alpha_a, gb_a)
+        # compute correlation for kernel on beta
+        alpha_b = 1 / (a.std(ddof=0) + EPS)
+        fa_b = f[:, 0] * alpha_b
+        beta_b, _, _, _ = np.linalg.lstsq(g, fa_b, rcond=None)
+        correlation_b, _ = pearsonr(fa_b, g @ beta_b)
+        # choose the best correlation and return
+        if correlation_a > correlation_b:
+            correlation, alpha, beta = correlation_a, list(alpha_a), [beta_a] + [0] * (self.degree - 1)
+        else:
+            correlation, alpha, beta = correlation_b, [alpha_b] + [0] * (self.degree - 1), list(beta_b)
+        return dict(correlation=correlation, alpha=alpha, beta=beta)
+
+    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        def standardize(t: torch.Tensor) -> torch.Tensor:
+            t_std, t_mean = torch.std_mean(t, correction=0)
+            return (t - t_mean) / (t_std + EPS)
+
+        # build the kernel matrices
+        f = torch.stack([a ** d - torch.mean(a ** d) for d in np.arange(self.degree) + 1], dim=1)
+        g = torch.stack([b ** d - torch.mean(b ** d) for d in np.arange(self.degree) + 1], dim=1)
+        # compute correlation for kernel on alpha ('gelsd' allows to have more precise and reproducible results)
+        gb_a = standardize(b)
+        alpha_a, _, _, _ = torch.linalg.lstsq(f, gb_a, driver='gelsd')
+        fa_a = standardize(f @ alpha_a)
+        correlation_a = torch.abs(fa_a @ gb_a)
+        # compute correlation for kernel on beta ('gelsd' allows to have more precise and reproducible results)
+        fa_b = standardize(a)
+        beta_b, _, _, _ = torch.linalg.lstsq(g, fa_b, driver='gelsd')
+        gb_b = standardize(g @ beta_b)
+        correlation_b = torch.abs(fa_b @ gb_b)
+        # return the maximal correlation
+        return torch.maximum(correlation_a, correlation_b)

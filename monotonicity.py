@@ -81,7 +81,7 @@ parser.add_argument(
     help='whether to plot the results'
 )
 parser.add_argument(
-    '-s',
+    '-t',
     '--save-time',
     type=int,
     default=60,
@@ -90,5 +90,8 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
+print('Starting Experiment: MONOTONICITY')
+for k, v in args.items():
+    print('  >', k, '-->', v)
 args['dataset'] = datasets[args['dataset']]
 CorrelationExperiment.monotonicity(**args)

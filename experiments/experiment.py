@@ -1,11 +1,10 @@
 import importlib.resources
 import itertools
 import json
-import math
 import time
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Any, Iterable, List
+from typing import Dict, Any
 
 import pytorch_lightning as pl
 from tqdm import tqdm
@@ -76,10 +75,11 @@ class Experiment(Serializable):
         return f'{self.name}_{self.dataset.key}_{self.metric.key}_{self.seed}'
 
     @classmethod
-    def doe(cls, file_name: str, save_time: int, **configuration: Iterable) -> List['Experiment']:
+    def doe(cls, file_name: str, save_time: int, **configuration: Any) -> Dict[Any, 'Experiment']:
         """Runs a combinatorial design of experiments (DoE) with the given characteristics. If possible, loads results
         from the given file which must be stored in the 'results' sub-package. When experiments are running, stores
         their results in the given file every <save_time> seconds."""
+        assert len(configuration) > 0, "Empty configuration passed"
         # retrieve the path of the results and load the json dictionary if the file exists
         with importlib.resources.path('experiments.results', file_name) as path:
             pass
@@ -88,17 +88,31 @@ class Experiment(Serializable):
                 results = json.load(fp=file)
         else:
             results = {}
-        # create the experiments and run the combinatorial design
+        # iterate through the configuration to create the combinatorial design
         gap = time.time()
-        keys = configuration.keys()
-        values = configuration.values()
-        parameters = itertools.product(*values)
-        experiments = []
-        for params in tqdm(parameters, total=math.prod([len(v) for v in values])):
+        indices, parameters, total = [], [], 1
+        for param in configuration.values():
+            if isinstance(param, dict):
+                indices.append(param.keys())
+                parameters.append(param.values())
+                total *= len(param)
+            elif isinstance(param, list):
+                indices.append(param)
+                parameters.append(param)
+                total *= len(param)
+            else:
+                parameters.append([param])
+        indices = indices[0] if len(indices) == 1 else itertools.product(*indices)
+        parameters = itertools.product(*parameters)
+        signature = configuration.keys()
+        # run and store the experiments
+        to_save = False
+        experiments = {}
+        for index, param in tqdm(zip(indices, parameters), total=total):
             # build the input configuration and use it to create an instance of the experiment
-            config = {k: v for k, v in zip(keys, params)}
+            config = {k: v for k, v in zip(signature, param)}
             experiment = cls(**config)
-            experiments.append(experiment)
+            experiments[index] = experiment
             # check if the experiment output is already in the dictionary based on its key
             key = experiment.key
             out = results.get(key)
@@ -106,6 +120,17 @@ class Experiment(Serializable):
             # otherwise, check that the data is correct and inject the stored result
             if out is None:
                 results[key] = experiment.output
+                # whenever the gap is larger than the expected time save the results
+                # otherwise, flag that results must be saved at the end of the doe
+                if time.time() - gap >= save_time:
+                    # dump the file before writing to check if it is json-compliant
+                    dump = json.dumps(results, indent=2)
+                    with open(path, 'w') as file:
+                        file.write(dump)
+                    gap = time.time()
+                    to_save = False
+                else:
+                    to_save = True
             else:
                 out = out.copy()
                 for k, exp in experiment.configuration.items():
@@ -113,12 +138,10 @@ class Experiment(Serializable):
                     assert exp == ref, f"Wrong attribute '{k}' loaded for '{key}', expected {exp}, got {ref}"
                 experiment._cache['result'] = out.pop('result')
                 assert len(out) == 0, f"Output has additional keys {out.keys()} which are not expected for '{key}'"
-            # whenever the gap is larger than the expected time, flush the results in the file
-            if time.time() - gap >= save_time:
-                with open(path, 'w') as file:
-                    json.dump(results, fp=file, indent=2)
-                gap = time.time()
-        # flush the results again at the end of the doe, then return the list of experiments
-        with open(path, 'w') as file:
-            json.dump(results, fp=file, indent=2)
+        # if necessary, save the results at the end of the doe, then return the experiments
+        if to_save:
+            # dump the file before writing to check if it is json-compliant
+            dump = json.dumps(results, indent=2)
+            with open(path, 'w') as file:
+                file.write(dump)
         return experiments

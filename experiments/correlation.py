@@ -7,12 +7,13 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from tqdm import tqdm
 
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.datasets.deterministic import Deterministic
 from src.hgr import KernelBasedHGR, HGR
+
+PALETTE: List[str] = ['#377eb8', '#ff7f00', '#4daf4a', '#f781bf', '#a65628', '#984ea3', '#999999', '#e41a1c', '#dede00']
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
@@ -55,27 +56,22 @@ class CorrelationExperiment(Experiment):
         experiments = CorrelationExperiment.doe(
             file_name='monotonicity.json',
             save_time=save_time,
-            dataset=[dataset],
-            seed=[0],
-            metric=[KernelBasedHGR(degree_a=da, degree_b=db) for da in degrees_a for db in degrees_b]
+            dataset=dataset,
+            seed=0,
+            metric={(da, db): KernelBasedHGR(degree_a=da, degree_b=db) for da in degrees_a for db in degrees_b}
         )
         # build results
-        results = {}
-        for experiment in experiments:
-            assert isinstance(experiment, CorrelationExperiment), "Wrong experiment returned"
-            assert isinstance(experiment.metric, KernelBasedHGR), "Wrong metric returned"
-            results[experiment.metric.degree_a, experiment.metric.degree_b] = experiment.correlation
-        output = np.zeros((len(degrees_a), len(degrees_b)))
+        results = np.zeros((len(degrees_a), len(degrees_b)))
         for i, da in enumerate(degrees_a[::-1]):
             for j, db in enumerate(degrees_b):
-                output[i, j] = results[(db, da)]
+                results[i, j] = experiments[(db, da)].result['correlation']
         degrees_b = degrees_b[::-1]
         # plot results
         sns.set_context('notebook')
         sns.set_style('whitegrid')
         fig = plt.figure(figsize=(12, 9), tight_layout=True)
         ax = fig.gca()
-        col = ax.imshow(output, cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
+        col = ax.imshow(results, cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
         fig.colorbar(col, ax=ax)
         ax.set_xlabel('Degree A')
         ax.set_xticks(np.arange(len(degrees_a) + 1) - 0.5)
@@ -101,60 +97,70 @@ class CorrelationExperiment(Experiment):
     @staticmethod
     def correlations(datasets: Dict[str, Callable[[float], Deterministic]],
                      metrics: Dict[str, HGR],
-                     noises: Iterable[float] = (0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3),
-                     seeds: Iterable[int] = (0, 1, 2, 3, 4),
-                     columns: int = 2,
+                     noises: Iterable[float] = np.linspace(0.0, 3.0, num=31, endpoint=True).round(2),
+                     seeds: Iterable[int] = range(30),
+                     columns: int = 3,
+                     legend: int = 1,
                      formats: Optional[List[str]] = None,
                      verbose: bool = False,
-                     plot: bool = False):
+                     plot: bool = False,
+                     save_time: int = 60):
         # run experiments
+        experiments = CorrelationExperiment.doe(
+            file_name='correlations.json',
+            save_time=save_time,
+            dataset={(k, n): fn(n) for k, fn in datasets.items() for n in noises},
+            metric=metrics,
+            seed=list(seeds)
+        )
+        # build results
         results = []
-        pbar = tqdm(total=len(noises) * len(datasets) * len(metrics) * len(seeds))
-        for noise in noises:
-            for dataset_name, dataset_fn in datasets.items():
-                dataset = dataset_fn(noise)
-                for metric_name, metric in metrics.items():
-                    for seed in seeds:
-                        results.append({
-                            'correlation': CorrelationExperiment(dataset=dataset, metric=metric, seed=seed).correlation,
-                            'dataset': dataset_name,
-                            'metric': metric_name,
-                            'noise': noise,
-                            'seed': seed
-                        })
-                        pbar.update(n=1)
-        pbar.close()
+        for key, experiment in experiments.items():
+            results.append({
+                'correlation': experiment.result['correlation'],
+                'dataset': key[0][0],
+                'noise': key[0][1],
+                'metric': key[1],
+                'seed': key[2]
+            })
         results = pd.DataFrame(results)
         # plot results
         sns.set_context('notebook')
         sns.set_style('whitegrid')
-        rows = int(np.ceil((len(datasets) + 1) / columns))
+        plots = len(datasets) + 1
+        rows = int(np.ceil(plots / columns))
+        legend = (legend + plots) % plots
         fig = plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)
         handles, labels, ax = [], [], None
-        for i, (name, data) in enumerate(results.groupby('dataset')):
-            ax = fig.add_subplot(rows, columns, i + 1, sharex=ax, sharey=ax)
+        names = list(datasets.keys())[::-1]
+        for i in np.arange(plots) + 1:
+            if i == legend:
+                continue
+            name = names.pop()
+            ax = fig.add_subplot(rows, columns, i, sharex=ax, sharey=ax)
             sns.lineplot(
-                data=data,
+                data=results[results['dataset'] == name],
                 x='noise',
                 y='correlation',
                 hue='metric',
                 style='metric',
                 estimator='mean',
-                errorbar='sd'
+                errorbar='sd',
+                palette=PALETTE[:len(metrics)],
+                linewidth=2
             )
             handles, labels = ax.get_legend_handles_labels()
             ax.get_legend().remove()
-            # ax.set_xticks(noises)
             ax.set_xlabel('Noise Level $\sigma$')
             ax.set_ylabel(None)
             ax.set_ylim((-0.1, 1.1))
             # plot the original data without noise
-            sub_ax = inset_axes(ax, width='30%', height='20%', loc='lower left')
+            sub_ax = inset_axes(ax, width='30%', height='30%', loc='upper right')
             datasets[name](0.0).plot(ax=sub_ax, color='black')
             sub_ax.set_xticks([])
             sub_ax.set_yticks([])
-        ax = fig.add_subplot(rows, columns, rows * columns)
-        ax.legend(handles, labels, title='Metric', loc='upper center', borderpad=1.5, labelspacing=1.5)
+        ax = fig.add_subplot(rows, columns, legend)
+        ax.legend(handles, labels, loc='center', labelspacing=1.5, frameon=False)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.spines['bottom'].set_visible(False)
