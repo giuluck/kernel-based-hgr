@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 import numpy as np
 import pandas as pd
@@ -29,17 +29,27 @@ class AdversarialHGR(HGR):
     def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name)
 
-    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
+    @staticmethod
+    def compute_with_networks(a: torch.Tensor, b: torch.Tensor) -> Tuple[torch.Tensor, nn.Module, nn.Module]:
+        """Computes the HGR coefficient and returns it along with the adversarial kernel networks."""
         net_1 = Net_HGR()
         net_2 = Net2_HGR()
         # model_F is linked to yhat and model_G is linked to s_var
         # in order to retrieve compatible kernel functions, we pass net2 on model_F and net1 on modelG
         model = HGR_NN(model_F=net_2, model_G=net_1, device=DEVICE, display=False)
         correlation = model(yhat=b, s_var=a, nb=EPOCHS)
-        return dict(correlation=correlation, f=net_1, g=net_2)
+        return correlation, net_1, net_2
+
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
+        a = torch.tensor(a, dtype=torch.float)
+        b = torch.tensor(b, dtype=torch.float)
+        correlation, net_1, net_2 = AdversarialHGR.compute_with_networks(a=a, b=b)
+        correlation = correlation.numpy(force=True).item()
+        return float(correlation), dict(f=net_1, g=net_2)
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        raise AssertionError("Adversarial HGR metric does not provide gradients")
+        correlation, _, _ = AdversarialHGR.compute_with_networks(a=a, b=b)
+        return correlation
 
 
 # The following code is obtained from the official repository of
@@ -157,6 +167,8 @@ class HGR_NN(nn.Module):
 
     def __init__(self, model_F, model_G, device, display):
         super(HGR_NN, self).__init__()
+        # self.mF = model_Net_F
+        # self.mG = model_Net_G
         self.mF = model_F
         self.mG = model_G
         self.device = device
@@ -166,8 +178,10 @@ class HGR_NN(nn.Module):
 
     def forward(self, yhat, s_var, nb):
 
-        svar = Variable(torch.FloatTensor(np.expand_dims(s_var, axis=1))).to(self.device)
-        yhatvar = Variable(torch.FloatTensor(np.expand_dims(yhat, axis=1))).to(self.device)
+        # svar = Variable(torch.FloatTensor(np.expand_dims(s_var, axis=1))).to(self.device)
+        # yhatvar = Variable(torch.FloatTensor(np.expand_dims(yhat, axis=1))).to(self.device)
+        svar = s_var.reshape((-1, 1)).to(self.device)
+        yhatvar = yhat.reshape((-1, 1)).to(self.device)
 
         self.mF.to(self.device)
         self.mG.to(self.device)
@@ -195,7 +209,7 @@ class HGR_NN(nn.Module):
             self.optimizer_G.step()
 
         # noinspection PyUnboundLocalVariable
-        return ret.cpu().detach().numpy()
+        return ret
 
 
 # noinspection PyPep8Naming,PyUnusedLocal

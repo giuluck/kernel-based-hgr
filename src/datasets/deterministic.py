@@ -60,7 +60,11 @@ class Deterministic(Dataset, ABC):
         return 'y'
 
     def plot(self, ax: plt.Axes, **kwargs):
-        ax.plot(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
+        # use lineplot in case the noise is null
+        if self.noise == 0.0:
+            ax.plot(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
+        else:
+            super().plot(ax=ax, **kwargs)
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
@@ -119,8 +123,8 @@ class NonLinear(Deterministic):
             raise AssertionError(f"Unknown non-linear function name '{self.fn}'")
 
     def plot(self, ax: plt.Axes, **kwargs):
-        # custom plot for 'sign' function to show the non-continuity
-        if self.fn == 'sign':
+        # use custom plot for 'sign' function without noise to show the non-continuity
+        if self.fn == 'sign' and self.noise == 0.0:
             x = self.excluded(backend='numpy')
             y = self.target(backend='numpy')
             ax.plot(x[x < 0], y[x < 0], **kwargs)

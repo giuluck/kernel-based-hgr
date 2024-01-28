@@ -1,12 +1,16 @@
+from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Tuple, Dict, Any
+from typing import Dict, Any, Tuple
 
 import numpy as np
 import torch
-from scipy.optimize import minimize, NonlinearConstraint
+from scipy.optimize import NonlinearConstraint, minimize
 from scipy.stats import pearsonr
 
 from src.hgr import HGR
+
+DEGREE: int = 7
+"""Default degree for kernel-based metrics."""
 
 EPS: float = 0.0
 """The tolerance used to account for null standard deviation."""
@@ -14,21 +18,25 @@ EPS: float = 0.0
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class KernelBasedHGR(HGR):
-    """Kernel-based HGR computed by solving a constrained least square problem using a minimization solver."""
-
-    degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The kernel degree for the first variable."""
-
-    degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The kernel degree for the first variable."""
+    """Kernel-based HGR interface."""
 
     @property
-    def name(self) -> str:
-        return 'kb'
+    @abstractmethod
+    def degree_a(self) -> int:
+        """The kernel degree for the first variable."""
+        pass
 
     @property
-    def configuration(self) -> Dict[str, Any]:
-        return dict(name=self.name, degree_a=self.degree_a, degree_b=self.degree_b)
+    @abstractmethod
+    def degree_b(self) -> int:
+        """The kernel degree for the first variable."""
+        pass
+
+    @staticmethod
+    def kernel(v, degree: int, use_torch: bool):
+        """Computes the kernel of the given vector with the given degree and using either numpy or torch as backend."""
+        backend, kwargs = (torch, {'dim': 1}) if use_torch else (np, {'axis': 1})
+        return backend.stack([v ** d - backend.mean(v ** d) for d in np.arange(degree) + 1], **kwargs)
 
     @staticmethod
     def higher_order_coefficients(f: np.ndarray, g: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -78,60 +86,68 @@ class KernelBasedHGR(HGR):
         s = minimize(_fun, jac=True, hess=lambda *_: fun_hess, x0=x0, constraints=[constraint], method='trust-constr')
         return s.x[:dx], s.x[dx:]
 
-    def correlation(self, a: np.ndarray, b: np.ndarray) -> float:
+    @staticmethod
+    def compute_numpy(a: np.ndarray,
+                      b: np.ndarray,
+                      degree_a: int,
+                      degree_b: int) -> Tuple[float, np.ndarray, np.ndarray]:
+        """Computes HGR using numpy as backend and returns the correlation along with alpha and beta."""
         # build the kernel matrices
-        f = np.stack([a ** d - np.mean(a ** d) for d in np.arange(self.degree_a) + 1], axis=1)
-        g = np.stack([b ** d - np.mean(b ** d) for d in np.arange(self.degree_b) + 1], axis=1)
+        f = KernelBasedHGR.kernel(a, degree=degree_a, use_torch=False)
+        g = KernelBasedHGR.kernel(b, degree=degree_b, use_torch=False)
         # handle trivial or simpler cases:
         #  - if both degrees are 1, simply compute the projected vectors as standardized original vectors
         #  - if one degree is 1, standardize that vector and compute the other's coefficients using lstsq
         #  - if no degree is 1, use the optimization routine and compute the projected vectors from the coefficients
-        if self.degree_a == 1 and self.degree_b == 1:
+        if degree_a == 1 and degree_b == 1:
             alpha, beta = np.ones(1), np.ones(1)
-        elif self.degree_a == 1:
+        elif degree_a == 1:
             std = a.std(ddof=0) + EPS
             alpha = np.ones(1) / std
             beta, _, _, _ = np.linalg.lstsq(g, f[:, 0] / std, rcond=None)
-        elif self.degree_b == 1:
+        elif degree_b == 1:
             std = b.std(ddof=0) + EPS
             beta = np.ones(1) / std
             alpha, _, _, _ = np.linalg.lstsq(f, g[:, 0] / std, rcond=None)
         else:
-            alpha, beta = self.higher_order_coefficients(f=f, g=g)
+            alpha, beta = KernelBasedHGR.higher_order_coefficients(f=f, g=g)
         fa = f @ alpha
         gb = g @ beta
         correlation, _ = pearsonr(fa, gb)
         alpha = alpha / (fa.std(ddof=0) + EPS)
         beta = beta / (gb.std(ddof=0) + EPS)
-        return dict(correlation=abs(correlation), alpha=alpha, beta=beta)
+        return abs(float(correlation)), alpha, beta
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def compute_torch(a: torch.Tensor, b: torch.Tensor, degree_a: int, degree_b: int) -> torch.Tensor:
+        """Computes HGR using numpy as backend and returns the correlation (without alpha and beta)."""
+
         def standardize(t: torch.Tensor) -> torch.Tensor:
             t_std, t_mean = torch.std_mean(t, correction=0)
             return (t - t_mean) / (t_std + EPS)
 
         # build the kernel matrices
-        f = torch.stack([a ** d - torch.mean(a ** d) for d in np.arange(self.degree_a) + 1], dim=1)
-        g = torch.stack([b ** d - torch.mean(b ** d) for d in np.arange(self.degree_b) + 1], dim=1)
+        f = KernelBasedHGR.kernel(a, degree=degree_a, use_torch=True)
+        g = KernelBasedHGR.kernel(b, degree=degree_b, use_torch=True)
         # handle trivial or simpler cases:
         #  - if both degrees are 1, simply compute the projected vectors as standardized original vectors
         #  - if one degree is 1, standardize that vector and compute the other's coefficients using lstsq
         #  - if no degree is 1, use the optimization routine and compute the projected vectors from the coefficients
-        if self.degree_a == 1 and self.degree_b == 1:
+        if degree_a == 1 and degree_b == 1:
             fa = standardize(a)
             gb = standardize(b)
-        elif self.degree_a == 1:
+        elif degree_a == 1:
             # the 'gelsd' driver allows to have both more precise and more reproducible results
             fa = standardize(a)
             beta, _, _, _ = torch.linalg.lstsq(g, fa, driver='gelsd')
             gb = standardize(g @ beta)
-        elif self.degree_b == 1:
+        elif degree_b == 1:
             # the 'gelsd' driver allows to have both more precise and more reproducible results
             gb = standardize(b)
             alpha, _, _, _ = torch.linalg.lstsq(f, gb, driver='gelsd')
             fa = standardize(f @ alpha)
         else:
-            alpha, beta = self.higher_order_coefficients(f=f.numpy(force=True), g=g.numpy(force=True))
+            alpha, beta = KernelBasedHGR.higher_order_coefficients(f=f.numpy(force=True), g=g.numpy(force=True))
             fa = standardize(f @ torch.tensor(alpha))
             gb = standardize(g @ torch.tensor(beta))
         # return the correlation as the absolute value of the vector product (since the vectors are standardized)
@@ -139,10 +155,33 @@ class KernelBasedHGR(HGR):
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class SingleKernelHGR(HGR):
+class DoubleKernelHGR(KernelBasedHGR):
+    """Kernel-based HGR computed by solving a constrained least square problem using a minimization solver."""
+
+    degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
+    degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
+
+    @property
+    def name(self) -> str:
+        return 'kb'
+
+    @property
+    def configuration(self) -> Dict[str, Any]:
+        return dict(name=self.name, degree_a=self.degree_a, degree_b=self.degree_b)
+
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
+        hgr, alpha, beta = KernelBasedHGR.compute_numpy(a=a, b=b, degree_a=self.degree_a, degree_b=self.degree_b)
+        return float(hgr), dict(alpha=alpha, beta=beta)
+
+    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        return KernelBasedHGR.compute_torch(a=a, b=b, degree_a=self.degree_a, degree_b=self.degree_b)
+
+
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
+class SingleKernelHGR(KernelBasedHGR):
     """Kernel-based HGR computed using one kernel only for both variables and then taking the maximal correlation."""
 
-    degree: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    degree: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
     """The kernel degree for the variables."""
 
     @property
@@ -150,53 +189,37 @@ class SingleKernelHGR(HGR):
         return 'sk'
 
     @property
+    def degree_a(self) -> int:
+        return self.degree
+
+    @property
+    def degree_b(self) -> int:
+        return self.degree
+
+    @property
     def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name, degree=self.degree)
 
-    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
-        # build the kernel matrices
-        f = np.stack([a ** d - np.mean(a ** d) for d in np.arange(self.degree) + 1], axis=1)
-        g = np.stack([b ** d - np.mean(b ** d) for d in np.arange(self.degree) + 1], axis=1)
-        # compute correlation for kernel on alpha
-        beta_a = 1 / (b.std(ddof=0) + EPS)
-        gb_a = g[:, 0] * beta_a
-        alpha_a, _, _, _ = np.linalg.lstsq(f, gb_a, rcond=None)
-        correlation_a, _ = pearsonr(f @ alpha_a, gb_a)
-        # compute correlation for kernel on beta
-        alpha_b = 1 / (a.std(ddof=0) + EPS)
-        fa_b = f[:, 0] * alpha_b
-        beta_b, _, _, _ = np.linalg.lstsq(g, fa_b, rcond=None)
-        correlation_b, _ = pearsonr(fa_b, g @ beta_b)
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
+        # compute single-kernel correlations along with kernels
+        hgr_a, alpha_a, beta_a = KernelBasedHGR.compute_numpy(a=a, b=b, degree_a=self.degree, degree_b=1)
+        hgr_b, alpha_b, beta_b = KernelBasedHGR.compute_numpy(a=a, b=b, degree_a=1, degree_b=self.degree)
         # choose the best correlation and return
-        if correlation_a > correlation_b:
-            correlation = correlation_a
+        if hgr_a > hgr_b:
+            hgr = hgr_a
             alpha = alpha_a
             beta = np.zeros(self.degree)
             beta[0] = beta_a
         else:
-            correlation = correlation_b
+            hgr = hgr_b
             alpha = np.zeros(self.degree)
-            alpha[0] = alpha_a
+            alpha[0] = alpha_b
             beta = beta_b
-        return dict(correlation=correlation, alpha=alpha, beta=beta)
+        return float(hgr), dict(alpha=alpha, beta=beta)
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        def standardize(t: torch.Tensor) -> torch.Tensor:
-            t_std, t_mean = torch.std_mean(t, correction=0)
-            return (t - t_mean) / (t_std + EPS)
-
-        # build the kernel matrices
-        f = torch.stack([a ** d - torch.mean(a ** d) for d in np.arange(self.degree) + 1], dim=1)
-        g = torch.stack([b ** d - torch.mean(b ** d) for d in np.arange(self.degree) + 1], dim=1)
-        # compute correlation for kernel on alpha ('gelsd' allows to have more precise and reproducible results)
-        gb_a = standardize(b)
-        alpha_a, _, _, _ = torch.linalg.lstsq(f, gb_a, driver='gelsd')
-        fa_a = standardize(f @ alpha_a)
-        correlation_a = torch.abs(fa_a @ gb_a)
-        # compute correlation for kernel on beta ('gelsd' allows to have more precise and reproducible results)
-        fa_b = standardize(a)
-        beta_b, _, _, _ = torch.linalg.lstsq(g, fa_b, driver='gelsd')
-        gb_b = standardize(g @ beta_b)
-        correlation_b = torch.abs(fa_b @ gb_b)
+        # compute single-kernel correlations
+        hgr_a = KernelBasedHGR.compute_torch(a=a, b=b, degree_a=self.degree, degree_b=1)
+        hgr_b = KernelBasedHGR.compute_torch(a=a, b=b, degree_a=1, degree_b=self.degree)
         # return the maximal correlation
-        return torch.maximum(correlation_a, correlation_b)
+        return torch.maximum(hgr_a, hgr_b)

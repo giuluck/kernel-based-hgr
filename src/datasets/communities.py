@@ -42,6 +42,3 @@ class Communities(Dataset):
     @property
     def target_name(self) -> str:
         return 'violentPerPop'
-
-    def plot(self, ax: plt.Axes, **kwargs):
-        ax.scatter(self.excluded(backend='numpy'), self.excluded(backend='numpy'), **kwargs)

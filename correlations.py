@@ -5,7 +5,8 @@ import numpy as np
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear
-from src.hgr import KernelBasedHGR, DensityHGR, ChiSquare, RandomizedDependencyCoefficient, SingleKernelHGR, AdversarialHGR
+from src.hgr import DoubleKernelHGR, DensityHGR, ChiSquare, RandomizedDependencyCoefficient, SingleKernelHGR, \
+    AdversarialHGR
 
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
@@ -20,18 +21,19 @@ datasets = dict(
     circle=lambda n: Polynomial(degree_x=2, degree_y=2, noise=n),
     sign=lambda n: NonLinear(fn='sign', noise=n),
     relu=lambda n: NonLinear(fn='relu', noise=n),
-    sin=lambda n: NonLinear(fn='sin', noise=n)
+    sin=lambda n: NonLinear(fn='sin', noise=n),
+    tanh=lambda n: NonLinear(fn='tanh', noise=n)
 )
 
 # list all the valid metrics
 metrics = {
-    'dkn': ('HGR-KB', KernelBasedHGR(degree_a=5, degree_b=5)),
-    'skn': ('HGR-SK', SingleKernelHGR(degree=5)),
+    'dkn': ('HGR-KB', DoubleKernelHGR()),
+    'skn': ('HGR-SK', SingleKernelHGR()),
     'adv': ('HGR-NN', AdversarialHGR()),
     'kde': ('HGR-KDE', DensityHGR()),
     'chi': ('CHI^2', ChiSquare()),
     'rdc': ('RDC', RandomizedDependencyCoefficient()),
-    'prs': ('PEARS', KernelBasedHGR(degree_a=1, degree_b=1)),
+    'prs': ('PEARS', DoubleKernelHGR(degree_a=1, degree_b=1)),
 }
 
 # build argument parser
@@ -42,7 +44,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=list(datasets),
+    default=[ds for ds in datasets if ds != 'tanh'],
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(
@@ -91,11 +93,6 @@ parser.add_argument(
     nargs='*',
     default=['png'],
     help='the extensions of the files to save'
-)
-parser.add_argument(
-    '--verbose',
-    action='store_true',
-    help='whether to print the results'
 )
 parser.add_argument(
     '--plot',

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 import numpy as np
 import torch
@@ -18,8 +18,9 @@ class RandomizedDependencyCoefficient(HGR):
     def configuration(self) -> Dict[str, Any]:
         return dict(name=self.name)
 
-    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
-        return {'correlation': rdc(x=a, y=b)}
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
+        correlation = rdc(x=a, y=b)
+        return float(correlation), dict()
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         raise AssertionError("RDC metric does not provide gradients")

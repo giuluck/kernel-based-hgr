@@ -26,10 +26,11 @@ datasets = dict(
 parser = argparse.ArgumentParser(description='Test the Kernel-based HGR on a given dataset')
 parser.add_argument(
     '-d',
-    '--dataset',
+    '--datasets',
     type=str,
+    nargs='+',
     choices=list(datasets),
-    default='communities',
+    default=['communities'],
     help='the dataset on which to run the experiment'
 )
 parser.add_argument(
@@ -71,11 +72,6 @@ parser.add_argument(
     help='the extensions of the files to save'
 )
 parser.add_argument(
-    '--verbose',
-    action='store_true',
-    help='whether to print the results'
-)
-parser.add_argument(
     '--plot',
     action='store_true',
     help='whether to plot the results'
@@ -94,5 +90,5 @@ print("Starting experiment 'monotonicity'...")
 for k, v in args.items():
     print('  >', k, '-->', v)
 print()
-args['dataset'] = datasets[args['dataset']]
+args['datasets'] = [datasets[name] for name in args['datasets']]
 CorrelationExperiment.monotonicity(**args)

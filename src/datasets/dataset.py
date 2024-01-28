@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.serializable import Serializable
+from src.serializable import Cacheable
 
 BackendType = Literal['numpy', 'pandas', 'torch']
 """The possible backend types."""
@@ -17,7 +17,7 @@ BackendOutput = Union[np.ndarray, pd.Series, pd.DataFrame, torch.Tensor]
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Dataset(Serializable):
+class Dataset(Cacheable):
 
     @property
     def _data(self) -> pd.DataFrame:
@@ -85,10 +85,9 @@ class Dataset(Serializable):
         """The protected feature vector."""
         return Dataset._to_backend(v=self._data[self.excluded_name], backend=backend)
 
-    @abstractmethod
     def plot(self, ax: plt.Axes, **kwargs):
         """Plots the excluded and the target feature in the given ax with the given arguments."""
-        pass
+        ax.scatter(self.excluded(backend='numpy'), self.excluded(backend='numpy'), **kwargs)
 
     def __len__(self) -> int:
         return len(self.data)

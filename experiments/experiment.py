@@ -1,22 +1,53 @@
 import importlib.resources
 import itertools
+import os
 import pickle
+import re
 import time
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional, Iterable, Callable
 
-import pytorch_lightning as pl
 from tqdm import tqdm
 
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.serializable import Serializable
+from src.serializable import Cacheable, Serializable
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Experiment(Serializable):
+class Experiment(Cacheable):
     """Interface for an experiment."""
+
+    class Result(Serializable):
+        """Wrapper class for an experiment result."""
+
+        def __init__(self, timestamp: float, execution: float, external: Optional[str], **kwargs):
+            """Builds a new result file with the given timestamp, execution time, and other arguments.
+            Moreover, it keeps a pointer to an external file containing additional results."""
+            self._kwargs: Dict[str, Any] = dict(timestamp=timestamp, execution=execution, **kwargs)
+            self._external_kwargs: Optional[Dict[str, Any]] = dict() if external is None else None
+            self._external: Optional[str] = external
+
+        def __getitem__(self, key: str) -> Any:
+            # id the key is in the default arguments, return it
+            output = self._kwargs.get(key)
+            if output is not None:
+                return output
+            # otherwise, load the external kwargs if necessary (i.e., the field is None)
+            # then try to look for the key in the external kwargs, and return it if found
+            if self._external_kwargs is None:
+                with importlib.resources.open_binary('experiments.results', self._external) as file:
+                    self._external_kwargs = pickle.load(file=file)
+            output = self._external_kwargs.get(key)
+            if output is not None:
+                return output
+            # if the value was not found neither in the default nor in the external arguments, raise an exception
+            raise KeyError(f"Key '{key}' is not defined for experiment {self}")
+
+        @property
+        def configuration(self) -> Dict[str, Any]:
+            return dict(external=self._external, **self._kwargs)
 
     dataset: Dataset = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The dataset used in the experiment."""
@@ -34,32 +65,19 @@ class Experiment(Serializable):
         pass
 
     @abstractmethod
-    def _compute(self) -> Dict[str, Any]:
+    def _compute(self) -> Result:
         """Computes the results of the experiment."""
         pass
 
     @property
-    def _result(self) -> Dict[str, Any]:
+    def result(self) -> Result:
         """Returns the result of the experiment. If the results were not cached yet, runs the experiment."""
-
-        def function():
-            pl.seed_everything(seed=self.seed, workers=True)
-            start = time.time()
-            result = self._compute()
-            execution = time.time() - start
-            return {**result, 'execution': execution, 'timestamp': start}
-
-        return self._lazy_initialization(attribute='result', function=function)
-
-    @property
-    def result(self) -> Dict[str, Any]:
-        """The result of the experiment."""
-        return self._result.copy()
+        return self._lazy_initialization(attribute='result', function=self._compute)
 
     @property
     def output(self) -> Dict[str, Any]:
         """The full output of the experiment, i.e., configuration and result."""
-        return {**self.configuration, 'result': self._result}
+        return {**self.configuration, 'result': self.result.configuration}
 
     @property
     def configuration(self) -> Dict[str, Any]:
@@ -74,13 +92,18 @@ class Experiment(Serializable):
     def key(self) -> str:
         return f'{self.name}_{self.dataset.key}_{self.metric.key}_{self.seed}'
 
+    @staticmethod
+    def external(self) -> Optional[str]:
+        """Name of the """
+        return f'{self.key}.pkl'
+
     @classmethod
     def doe(cls, file_name: str, save_time: int, **configuration: Any) -> Dict[Any, 'Experiment']:
         """Runs a combinatorial design of experiments (DoE) with the given characteristics. If possible, loads results
         from the given file which must be stored in the 'results' sub-package. When experiments are running, stores
         their results in the given file every <save_time> seconds."""
         assert len(configuration) > 0, "Empty configuration passed"
-        # retrieve the path of the results and load the json dictionary if the file exists
+        # retrieve the path of the results and load the pickle dictionary if the file exists
         with importlib.resources.path('experiments.results', f'{file_name}.pkl') as path:
             pass
         if path.exists():
@@ -89,7 +112,6 @@ class Experiment(Serializable):
         else:
             results = {}
         # iterate through the configuration to create the combinatorial design
-        gap = time.time()
         indices, parameters, total = [], [], 1
         for param in configuration.values():
             if isinstance(param, dict):
@@ -97,7 +119,7 @@ class Experiment(Serializable):
                 parameters.append(param.values())
                 total *= len(param)
             elif isinstance(param, list):
-                indices.append(param)
+                indices.append(list(range(len(param))))
                 parameters.append(param)
                 total *= len(param)
             else:
@@ -106,8 +128,9 @@ class Experiment(Serializable):
         parameters = itertools.product(*parameters)
         signature = configuration.keys()
         # run and store the experiments
-        to_save = False
         experiments = {}
+        gap = time.time()
+        to_save = False
         for index, param in tqdm(zip(indices, parameters), total=total):
             # build the input configuration and use it to create an instance of the experiment
             config = {k: v for k, v in zip(signature, param)}
@@ -123,7 +146,7 @@ class Experiment(Serializable):
                 # whenever the gap is larger than the expected time save the results
                 # otherwise, flag that results must be saved at the end of the doe
                 if time.time() - gap >= save_time:
-                    # dump the file before writing to check if it is json-compliant
+                    # dump the file before writing to check if it is pickle-compliant
                     dump = pickle.dumps(results)
                     with open(path, 'wb') as file:
                         file.write(dump)
@@ -136,12 +159,78 @@ class Experiment(Serializable):
                 for k, exp in experiment.configuration.items():
                     ref = out.pop(k)
                     assert exp == ref, f"Wrong attribute '{k}' loaded for '{key}', expected {exp}, got {ref}"
-                experiment._cache['result'] = out.pop('result')
+                experiment._cache['result'] = Experiment.Result(**out.pop('result'))
                 assert len(out) == 0, f"Output has additional keys {out.keys()} which are not expected for '{key}'"
         # if necessary, save the results at the end of the doe, then return the experiments
         if to_save:
-            # dump the file before writing to check if it is json-compliant
+            # dump the file before writing to check if it is pickle-compliant
             dump = pickle.dumps(results)
             with open(path, 'wb') as file:
                 file.write(dump)
         return experiments
+
+    @staticmethod
+    def clear_results(file: List[str],
+                      dataset: Optional[Iterable[str]] = None,
+                      metric: Optional[Iterable[str]] = None,
+                      seed: Optional[Iterable[int]] = None,
+                      pattern: Optional[str] = None,
+                      custom: Callable[[dict], bool] = lambda _: False):
+        # build sets and pattern
+        pattern = None if pattern is None else re.compile(pattern)
+        datasets = None if dataset is None else set(dataset)
+        metrics = None if metric is None else set(metric)
+        seeds = None if seed is None else set(seed)
+        # get the folder path
+        with importlib.resources.files('experiments.results') as folder:
+            pass
+        # iterate over all the files
+        for filename in file:
+            # if it does not exist, there is nothing to clear
+            path = os.path.join(folder, filename)
+            if not os.path.exists(path):
+                continue
+            # otherwise, retrieve the dictionary of results
+            with open(path, 'rb') as file:
+                results = pickle.load(file=file)
+            print(f"Retrieved {len(results)} experiments from '{filename}.pkl'")
+            # build a dictionary of results to keep
+            # a result must if there is at least a non-null matcher that does not match
+            output = {}
+            for idx, res in results.items():
+                if datasets is not None and res['dataset']['name'] not in datasets:
+                    # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch dataset '{res['dataset']['name']}')")
+                    output[idx] = res
+                elif metrics is not None and res['metric']['name'] not in metrics:
+                    # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch metric '{res['metric']['name']}')")
+                    output[idx] = res
+                elif seeds is not None and res['seed'] not in seeds:
+                    # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch seed {res['seed']})")
+                    output[idx] = res
+                elif pattern is not None and not pattern.match(idx):
+                    # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch pattern)")
+                    output[idx] = res
+                elif not custom(res):
+                    output[idx] = res
+                else:
+                    external = res['result']['external']
+                    if external is None:
+                        print(f"CLEAR: '{idx}' from '{filename}.pkl'")
+                    else:
+                        external = os.path.join(folder, external)
+                        os.remove(external)
+                        print(f"CLEAR: '{idx}' from '{filename}.pkl and external file '{external}'")
+
+            # dump the file before writing to check if it is pickle-compliant
+            print(f"\nRemoving {len(results) - len(output)} experiments from '{filename}.pkl' ({len(output)} left)")
+            dump = pickle.dumps(output)
+            with open(path, 'wb') as file:
+                file.write(dump)
+
+    @staticmethod
+    def clear_exports():
+        with importlib.resources.files('experiments.exports') as folder:
+            for file in os.listdir(folder):
+                if file != '__pycache__' and not file.endswith('.py'):
+                    print(f'CLEAR: export file {file}')
+                    os.remove(os.path.join(folder, file))

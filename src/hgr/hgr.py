@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Tuple, Dict, Any
 
 import numpy as np
 import torch
@@ -24,7 +24,7 @@ class HGR(Serializable):
         pass
 
     @abstractmethod
-    def correlation(self, a: np.ndarray, b: np.ndarray) -> Dict[str, Any]:
-        """Computes the correlation between two numpy vectors <a> and <b> and returns a dictionary of type
-        {correlation: <float>, **additional_results}."""
+    def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
+        """Computes the correlation between two numpy vectors <a> and <b> and returns the dictionary along with a
+        dictionary of additional results."""
         pass
