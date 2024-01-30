@@ -87,7 +87,7 @@ class Dataset(Cacheable):
 
     def plot(self, ax: plt.Axes, **kwargs):
         """Plots the excluded and the target feature in the given ax with the given arguments."""
-        ax.scatter(self.excluded(backend='numpy'), self.excluded(backend='numpy'), **kwargs)
+        ax.scatter(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
 
     def __len__(self) -> int:
         return len(self.data)

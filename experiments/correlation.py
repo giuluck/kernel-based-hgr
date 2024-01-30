@@ -2,11 +2,12 @@ import importlib.resources
 import pickle
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Callable, Iterable
+from typing import Dict, List, Optional, Callable, Iterable, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pytorch_lightning as pl
 import seaborn as sns
 import torch
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -14,9 +15,20 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.datasets.deterministic import Deterministic
-from src.hgr import DoubleKernelHGR, HGR, KernelBasedHGR, AdversarialHGR
+from src.hgr import DoubleKernelHGR, HGR, KernelBasedHGR, AdversarialHGR, Oracle
 
-PALETTE: List[str] = ['#377eb8', '#ff7f00', '#4daf4a', '#f781bf', '#a65628', '#984ea3', '#999999', '#e41a1c', '#dede00']
+PALETTE: List[str] = [
+    '#000000',
+    '#377eb8',
+    '#ff7f00',
+    '#4daf4a',
+    '#f781bf',
+    '#a65628',
+    '#984ea3',
+    '#999999',
+    '#e41a1c',
+    '#dede00'
+]
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
@@ -24,6 +36,7 @@ class CorrelationExperiment(Experiment):
     """An experiment where the correlation between two variables is computed."""
 
     def _compute(self) -> Experiment.Result:
+        pl.seed_everything(0, workers=True)
         start = time.time()
         a = self.dataset.excluded(backend='numpy')
         b = self.dataset.target(backend='numpy')
@@ -63,16 +76,15 @@ class CorrelationExperiment(Experiment):
         for dataset in datasets:
             # build results
             results = np.zeros((len(degrees_a), len(degrees_b)))
-            for i, da in enumerate(degrees_a[::-1]):
+            for i, da in enumerate(degrees_a):
                 for j, db in enumerate(degrees_b):
-                    results[i, j] = experiments[(dataset.key, (db, da))].result['correlation']
-            degrees_b = degrees_b[::-1]
+                    results[i, j] = experiments[(dataset.key, (da, db))].result['correlation']
             # plot results
             sns.set_context('notebook')
             sns.set_style('whitegrid')
             fig = plt.figure(figsize=(12, 9), tight_layout=True)
             ax = fig.gca()
-            col = ax.imshow(results, cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
+            col = ax.imshow(results.transpose()[::-1], cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
             fig.colorbar(col, ax=ax)
             ax.set_xlabel('Degree A')
             ax.set_xticks(np.arange(len(degrees_a) + 1) - 0.5)
@@ -102,12 +114,13 @@ class CorrelationExperiment(Experiment):
                      metrics: Dict[str, HGR],
                      noises: Iterable[float] = np.linspace(0.0, 3.0, num=31, endpoint=True).round(2),
                      seeds: Iterable[int] = range(30),
-                     columns: int = 3,
+                     columns: int = 2,
                      legend: int = 1,
                      formats: Iterable[str] = ('png',),
                      plot: bool = False,
                      save_time: int = 60):
         # run experiments
+        metrics = {'ORACLE': Oracle, **metrics}
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
             save_time=save_time,
@@ -181,6 +194,7 @@ class CorrelationExperiment(Experiment):
             hue='metric',
             estimator='mean',
             errorbar='sd',
+            palette=PALETTE[:len(metrics)],
             legend=False,
             ax=ax
         )
@@ -190,68 +204,144 @@ class CorrelationExperiment(Experiment):
         # store, print, and plot if necessary
         for extension in formats:
             package = 'experiments.exports'
-            fig_data.suptitle('Computed Correlations')
-            fig_time.suptitle('Execution Times to Compute Correlations')
             with importlib.resources.path(package, f'correlations_data.{extension}') as file:
                 fig_data.savefig(file, bbox_inches='tight')
             with importlib.resources.path(package, f'correlations_time.{extension}') as file:
                 fig_time.savefig(file, bbox_inches='tight')
         if plot:
+            fig_data.suptitle('Computed Correlations')
             fig_data.show()
+            fig_time.suptitle('Execution Times to Compute Correlations')
             fig_time.show()
 
     @staticmethod
-    def kernels(datasets: Iterable[Dataset],
+    def kernels(datasets: Iterable[Deterministic],
+                degrees: Iterable[int] = (),
+                tests: int = 30,
                 formats: Iterable[str] = ('png',),
-                plot: bool = False):
-        def standardize(v):
-            return (v - v.mean()) / (v.std(ddof=0))
+                plot: bool = False,
+                save_time: int = 60):
+        def standardize(vv: np.ndarray) -> np.ndarray:
+            return (vv - vv.mean()) / (vv.std(ddof=0))
+
+        def hgr(xx: CorrelationExperiment, aa: np.ndarray, bb: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray]:
+            mtr = xx.metric
+            if isinstance(mtr, Oracle):
+                ff_aa = standardize(mtr.dataset.f(aa))
+                gg_bb = standardize(mtr.dataset.g(bb))
+            elif isinstance(mtr, AdversarialHGR):
+                aa = torch.tensor(aa, dtype=torch.float32).reshape((-1, 1))
+                bb = torch.tensor(bb, dtype=torch.float32).reshape((-1, 1))
+                ff_aa = standardize(xx.result['f'](aa).numpy(force=True).flatten())
+                gg_bb = standardize(xx.result['g'](bb).numpy(force=True).flatten())
+            elif isinstance(mtr, KernelBasedHGR):
+                # center the kernel with respect to the training data
+                a_ref, b_ref = xx.dataset.excluded(backend='numpy'), xx.dataset.target(backend='numpy')
+                ff = np.stack([aa ** d - np.mean(a_ref ** d) for d in np.arange(mtr.degree_a) + 1], axis=1)
+                gg = np.stack([bb ** d - np.mean(b_ref ** d) for d in np.arange(mtr.degree_b) + 1], axis=1)
+                ff_aa = standardize(ff @ xx.result['alpha'])
+                gg_bb = standardize(gg @ xx.result['beta'])
+            else:
+                raise AssertionError(f"Unsupported metric {mtr}")
+            return abs(np.mean(ff_aa * gg_bb)), ff_aa, gg_bb
 
         # run experiments
+        metrics = {
+            'ORACLE': Oracle,
+            **{f'HGR-KB ({d})': DoubleKernelHGR(degree_a=d, degree_b=d) for d in degrees},
+            'HGR-KB': DoubleKernelHGR(),
+            'HGR-NN': AdversarialHGR()
+        }
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
-            save_time=0,
+            save_time=save_time,
             dataset={dataset.key: dataset for dataset in datasets},
-            metric=[DoubleKernelHGR(), AdversarialHGR()],
+            metric=metrics,
             seed=0
         )
         for dataset in datasets:
             # build and plot results
             a = dataset.excluded(backend='numpy')
             b = dataset.target(backend='numpy')
-            fig, axes = plt.subplots(1, 2, figsize=(14, 6), tight_layout=True)
-            # retrieve hgr-kb
-            exp_kb = experiments[(dataset.key, 0)]
-            # noinspection PyUnresolvedReferences
-            f_kb = KernelBasedHGR.kernel(a, degree=exp_kb.metric.degree_a, use_torch=False)
-            # noinspection PyUnresolvedReferences
-            g_kb = KernelBasedHGR.kernel(b, degree=exp_kb.metric.degree_b, use_torch=False)
-            fa_kb = standardize(f_kb @ exp_kb.result['alpha'])
-            gb_kb = standardize(g_kb @ exp_kb.result['beta'])
-            # retrieve hgr-nn (switch sign to match the same orientation of the other kernels)
-            exp_nn = experiments[(dataset.key, 1)]
-            a_nn = torch.tensor(a, dtype=torch.float32).reshape((-1, 1))
-            b_nn = torch.tensor(b, dtype=torch.float32).reshape((-1, 1))
-            fa_nn = standardize(exp_nn.result['f'](a_nn).numpy(force=True).flatten())
-            gb_nn = standardize(exp_nn.result['g'](b_nn).numpy(force=True).flatten())
-            if fa_kb[0] * fa_nn[0] < 0:
-                fa_nn, gb_nn = -fa_nn, -gb_nn
+            fig, axes = plt.subplot_mosaic(
+                mosaic=[['A', 'A', 'data', 'B', 'B'], ['A', 'A', 'hgr', 'B', 'B']],
+                figsize=(15, 6),
+                tight_layout=True
+            )
+            fa, gb = {'index': a}, {'index': b}
+            # retrieve metric kernels (switch sign to match the same orientation of the optimal kernels)
+            anchors = np.random.default_rng(0).choice(range(len(a)), size=10, replace=False)
+            for name, metric in metrics.items():
+                _, f_a, g_b = hgr(xx=experiments[(dataset.key, name)], aa=a, bb=b)
+                if name != 'ORACLE':
+                    kernel_anchors = f_a[anchors]
+                    oracle_anchors = fa['ORACLE'][anchors]
+                    anchor_signs = np.sign(kernel_anchors * oracle_anchors)
+                    if anchor_signs.sum() < 0:
+                        f_a, g_b = -f_a, -g_b
+                fa[name], gb[name] = f_a, g_b
+            fa, gb = pd.DataFrame(fa).set_index('index'), pd.DataFrame(gb).set_index('index')
             # plot kernels
-            for x, y, ax, kernel in zip([a, b], [(fa_kb, fa_nn), (gb_kb, gb_nn)], axes, ['X', 'Y']):
-                sns.lineplot(x=x, y=y[0], sort=True, color=PALETTE[0], linestyle='-', label='HGR-KB', ax=ax)
-                sns.lineplot(x=x, y=y[1], sort=True, color=PALETTE[1], linestyle='--', label='HGR-NN', ax=ax)
+            for data, kernel, labels in zip([fa, gb], ['A', 'B'], [('a', 'f(a)'), ('b', 'g(b)')]):
+                ax = axes[kernel]
+                sns.lineplot(
+                    data=data,
+                    sort=True,
+                    estimator=None,
+                    palette=PALETTE[:len(metrics)],
+                    ax=ax
+                )
                 ax.set_title(f'{kernel} Kernel')
-                ax.set_xticklabels([])
-                ax.set_yticklabels([])
+                ax.set_xlabel(labels[0])
+                ax.set_ylabel(labels[1], rotation=0, labelpad=15)
+                ax.set_xticks([])
+                ax.set_yticks([])
                 ax.legend(loc='best')
+            # plot data
+            ax = axes['data']
+            kwargs = dict() if dataset.noise == 0.0 else dict(alpha=0.6, edgecolor='black')
+            dataset.plot(ax=ax, color='black', **kwargs)
+            ax.set_title('Data')
+            ax.set_xlabel('a')
+            ax.set_ylabel('b', rotation=0, labelpad=7.5)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            # compute and plot correlations
+            correlations = [{
+                'metric': metric,
+                'split': 'train',
+                'hgr': experiments[(dataset.key, metric)].result['correlation']
+            } for metric in metrics.keys()]
+            for seed in np.arange(tests) + 1:
+                x, y = dataset.from_seed(seed=seed)
+                correlations += [{
+                    'metric': metric,
+                    'split': 'test',
+                    'hgr': hgr(xx=experiments[(dataset.key, metric)], aa=x, bb=y)[0]
+                } for metric in metrics.keys()]
+            ax = axes['hgr']
+            sns.barplot(
+                data=pd.DataFrame(correlations),
+                y='hgr',
+                x='split',
+                hue='metric',
+                estimator='mean',
+                errorbar='sd',
+                palette=PALETTE[:len(metrics)]
+            )
+            ax.set_title('Correlation')
+            ax.get_legend().set_title(None)
+            ax.set_xlabel(None)
+            ax.set_ylabel(None)
+            ax.set_ylim((0, 1))
             # store and plot if necessary
             for extension in formats:
-                config = dataset.configuration
-                name = config.pop('name').title()
-                info = ', '.join({f'{key}={value}' for key, value in config.items()})
-                fig.suptitle(f'Kernels for {name}({info})')
                 name = f'kernels_{dataset.key}.{extension}'
                 with importlib.resources.path('experiments.exports', name) as file:
                     fig.savefig(file, bbox_inches='tight')
             if plot:
+                config = dataset.configuration
+                name = config.pop('name').title()
+                info = ', '.join({f'{key}={value}' for key, value in config.items()})
+                fig.suptitle(f'Kernels for {name}({info})')
                 fig.show()

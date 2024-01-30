@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional, Iterable, Callable
 from tqdm import tqdm
 
 from src.datasets import Dataset
-from src.hgr import HGR
+from src.hgr import HGR, Oracle
 from src.serializable import Cacheable, Serializable
 
 
@@ -131,9 +131,18 @@ class Experiment(Cacheable):
         experiments = {}
         gap = time.time()
         to_save = False
-        for index, param in tqdm(zip(indices, parameters), total=total):
+        for index, param in tqdm(zip(indices, parameters), total=total, desc='Fetching Experiments'):
             # build the input configuration and use it to create an instance of the experiment
             config = {k: v for k, v in zip(signature, param)}
+            # -------------------------------------------------------------------------------------
+            # QUICK PATCH TO HANDLE ORACLE METRIC WHICH NEEDS TO BE BUILT WITH A DATASET ISTANCE
+            metric = config.get('metric')
+            if metric is not None and isinstance(metric, Oracle.__class__):
+                dataset = config.get('dataset')
+                assert dataset is not None, "Trying to use Oracle metric without passing a dataset"
+                # noinspection PyArgumentList
+                config['metric'] = metric(dataset=dataset)
+            # -------------------------------------------------------------------------------------
             experiment = cls(**config)
             experiments[index] = experiment
             # check if the experiment output is already in the dictionary based on its key
@@ -175,7 +184,7 @@ class Experiment(Cacheable):
                       metric: Optional[Iterable[str]] = None,
                       seed: Optional[Iterable[int]] = None,
                       pattern: Optional[str] = None,
-                      custom: Callable[[dict], bool] = lambda _: False):
+                      custom: Optional[Callable[[dict], bool]] = None):
         # build sets and pattern
         pattern = None if pattern is None else re.compile(pattern)
         datasets = None if dataset is None else set(dataset)
@@ -187,7 +196,7 @@ class Experiment(Cacheable):
         # iterate over all the files
         for filename in file:
             # if it does not exist, there is nothing to clear
-            path = os.path.join(folder, filename)
+            path = os.path.join(folder, f'{filename}.pkl')
             if not os.path.exists(path):
                 continue
             # otherwise, retrieve the dictionary of results
@@ -210,17 +219,15 @@ class Experiment(Cacheable):
                 elif pattern is not None and not pattern.match(idx):
                     # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch pattern)")
                     output[idx] = res
-                elif not custom(res):
+                elif custom is not None and not custom(res):
                     output[idx] = res
                 else:
                     external = res['result']['external']
                     if external is None:
                         print(f"CLEAR: '{idx}' from '{filename}.pkl'")
                     else:
-                        external = os.path.join(folder, external)
-                        os.remove(external)
+                        os.remove(os.path.join(folder, external))
                         print(f"CLEAR: '{idx}' from '{filename}.pkl and external file '{external}'")
-
             # dump the file before writing to check if it is pickle-compliant
             print(f"\nRemoving {len(results) - len(output)} experiments from '{filename}.pkl' ({len(output)} left)")
             dump = pickle.dumps(output)

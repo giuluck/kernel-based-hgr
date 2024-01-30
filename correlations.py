@@ -17,8 +17,8 @@ datasets = dict(
     linear=lambda n: Polynomial(degree_x=1, degree_y=1, noise=n),
     x_square=lambda n: Polynomial(degree_x=2, degree_y=1, noise=n),
     x_cubic=lambda n: Polynomial(degree_x=3, degree_y=1, noise=n),
-    y_square=lambda n: Polynomial(degree_x=1, degree_y=2, noise=n),
     circle=lambda n: Polynomial(degree_x=2, degree_y=2, noise=n),
+    y_square=lambda n: Polynomial(degree_x=1, degree_y=2, noise=n),
     sign=lambda n: NonLinear(fn='sign', noise=n),
     relu=lambda n: NonLinear(fn='relu', noise=n),
     sin=lambda n: NonLinear(fn='sin', noise=n),
@@ -44,16 +44,16 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=[ds for ds in datasets if ds != 'tanh'],
+    default=[ds for ds in datasets.keys() if ds not in ['linear', 'x_cubic', 'relu', 'tanh']],
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(
     '-m',
     '--metrics',
     type=str,
-    nargs='+',
+    nargs='*',
     choices=list(metrics),
-    default=list(metrics),
+    default=[mt for mt in metrics.keys() if mt not in ['chi', 'rdc', 'prs']],
     help='the metrics used to compute the correlations'
 )
 parser.add_argument(
@@ -61,7 +61,7 @@ parser.add_argument(
     '--noises',
     type=float,
     nargs='+',
-    default=list(np.linspace(0.0, 3.0, num=31, endpoint=True).round(2)),
+    default=list(np.linspace(0.0, 10.0, num=26, endpoint=True).round(2)),
     help='the noise values used in the experiments'
 )
 parser.add_argument(
@@ -76,7 +76,7 @@ parser.add_argument(
     '-c',
     '--columns',
     type=int,
-    default=3,
+    default=2,
     help='the number of columns in the final plot'
 )
 parser.add_argument(

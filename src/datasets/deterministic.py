@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from math import pi
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,23 +24,35 @@ class Deterministic(Dataset, ABC):
     noise: float = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=0.0)
     """The amount of noise to be introduced in the target data."""
 
-    def _load(self) -> pd.DataFrame:
-        rng = np.random.default_rng(seed=SEED)
+    def from_seed(self, seed: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Returns an alternative version of the same dataset generated using a given random seed."""
+        rng = np.random.default_rng(seed=seed)
         # take x within the interval [-1, 1] then duplicate it in order to have swapped signs for y if necessary
-        s = np.linspace(0, 1, num=SIZE, endpoint=True) if LINSPACE else rng.uniform(0, 1, size=SIZE)
+        s = np.linspace(-1, 1, num=SIZE, endpoint=True) if LINSPACE else rng.uniform(0, 1, size=SIZE)
         x = np.concatenate((s, s[::-1]))
-        # build y according to the function then normalize it in order to add a correct relative amount of noise
-        y = self.function(x)
-        y = (y - y.min()) / (y.max() - y.min()) + rng.normal(loc=0.0, scale=self.noise, size=len(y))
-        # build the dataframe with standardized input and normalized output
-        return pd.DataFrame({
-            'x': (x - x.mean()) / x.std(ddof=0),
-            'y': (y - y.min()) / (y.max() - y.min())
-        })
+        # build y according to the function and add noise (use 1 + \sigma to have proportional noise)
+        y = self._function(x=x)
+        y = y * (1 + rng.normal(loc=0.0, scale=self.noise, size=len(y)))
+        # return the data
+        return x, y
+
+    def _load(self) -> pd.DataFrame:
+        x, y = self.from_seed(seed=SEED)
+        return pd.DataFrame({'x': x, 'y': y})
 
     @abstractmethod
-    def function(self, x: np.ndarray) -> np.ndarray:
-        """Builds the target data given the protected (input) data."""
+    def _function(self, x: np.ndarray) -> np.ndarray:
+        """Computes the target data given the protected (input) data and the training (input) data."""
+        pass
+
+    @abstractmethod
+    def f(self, a: np.ndarray) -> np.ndarray:
+        """Maps the protected (input) data in the correlation space using the optimal f kernel."""
+        pass
+
+    @abstractmethod
+    def g(self, b: np.ndarray) -> np.ndarray:
+        """Maps the target data in the correlation space using the optimal g kernel."""
         pass
 
     @property
@@ -64,7 +76,7 @@ class Deterministic(Dataset, ABC):
         if self.noise == 0.0:
             ax.plot(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
         else:
-            super().plot(ax=ax, **kwargs)
+            super(Deterministic, self).plot(ax=ax, **kwargs)
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
@@ -83,14 +95,18 @@ class Polynomial(Deterministic):
     def name(self) -> str:
         return 'poly'
 
-    def function(self, x: np.ndarray) -> np.ndarray:
-        # rescale x from [0, 1] to [-1, 1]
-        x = 2 * x - 1
+    def _function(self, x: np.ndarray) -> np.ndarray:
         # build y so that the following relationship holds: x^dx + y^dy = 1
         # in order to do that, compute y as: y = (1 - x^dx) ^ (1 / dy)
         # then, if the degree of y is odd swap the signs of the first half, otherwise take positive signs only
         sign = np.array([-1 if self.degree_y % 2 == 0 else 1] * SIZE + [1] * SIZE)
         return -sign * np.power(1 - x ** self.degree_x, 1.0 / self.degree_y)
+
+    def f(self, a: np.ndarray) -> np.ndarray:
+        return 1 - a ** self.degree_x
+
+    def g(self, b: np.ndarray) -> np.ndarray:
+        return (-b) ** self.degree_y
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
@@ -106,21 +122,27 @@ class NonLinear(Deterministic):
     def name(self) -> str:
         return 'nonlinear'
 
-    def function(self, x: np.ndarray) -> np.ndarray:
+    def _function(self, x: np.ndarray) -> np.ndarray:
         if self.fn == 'sign':
-            # apply the function to the input vector rescaled from [0, 1] to [-1, 1]
-            return np.sign(2 * x - 1)
+            return np.sign(x)
         elif self.fn == 'relu':
-            # apply the function to the input vector rescaled from [0, 1] to [-1, 1]
-            return np.maximum(0, 2 * x - 1)
+            return np.maximum(0, x)
         elif self.fn == 'sin':
-            # apply the function to the input vector rescaled from [0, 1] to [0, 2 * pi]
-            return np.sin(2 * pi * x)
+            # apply the function to the input vector rescaled by a factor of \pi
+            return np.sin(pi * x)
         elif self.fn == 'tanh':
-            # apply the function to the input vector rescaled from [0, 1] to [-10, 10]
-            return np.tanh(20 * x - 10)
+            # apply the function to the input vector rescaled by a factor of 10
+            return np.tanh(10 * x)
         else:
             raise AssertionError(f"Unknown non-linear function name '{self.fn}'")
+
+    def f(self, a: np.ndarray) -> np.ndarray:
+        # apply the function as it is while using the protected input to rescale
+        return self._function(a)
+
+    def g(self, b: np.ndarray) -> np.ndarray:
+        # rescale with respect to the target and return it as it is
+        return b
 
     def plot(self, ax: plt.Axes, **kwargs):
         # use custom plot for 'sign' function without noise to show the non-continuity
@@ -130,4 +152,4 @@ class NonLinear(Deterministic):
             ax.plot(x[x < 0], y[x < 0], **kwargs)
             ax.plot(x[x > 0], y[x > 0], **kwargs)
         else:
-            super().plot(ax=ax, **kwargs)
+            super(NonLinear, self).plot(ax=ax, **kwargs)
