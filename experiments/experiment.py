@@ -184,7 +184,8 @@ class Experiment(Cacheable):
                       metric: Optional[Iterable[str]] = None,
                       seed: Optional[Iterable[int]] = None,
                       pattern: Optional[str] = None,
-                      custom: Optional[Callable[[dict], bool]] = None):
+                      custom: Optional[Callable[[dict], bool]] = None,
+                      force: bool = False):
         # build sets and pattern
         pattern = None if pattern is None else re.compile(pattern)
         datasets = None if dataset is None else set(dataset)
@@ -206,6 +207,7 @@ class Experiment(Cacheable):
             # build a dictionary of results to keep
             # a result must if there is at least a non-null matcher that does not match
             output = {}
+            externals = []
             for idx, res in results.items():
                 if datasets is not None and res['dataset']['name'] not in datasets:
                     # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch dataset '{res['dataset']['name']}')")
@@ -226,13 +228,24 @@ class Experiment(Cacheable):
                     if external is None:
                         print(f"CLEAR: '{idx}' from '{filename}.pkl'")
                     else:
-                        os.remove(os.path.join(folder, external))
+                        externals.append(external)
                         print(f"CLEAR: '{idx}' from '{filename}.pkl and external file '{external}'")
+            if not force:
+                result = input(f"\nAre you sure you want to remove {len(results) - len(output)} experiments from "
+                               f"'{filename}.pkl', leaving {len(output)} experiments left? (Y/N)\n")
+                if result.lower() not in ['y', 'yes']:
+                    print(f"\nClearing procedure for file '{filename}.pkl' aborted")
+                    break
+                else:
+                    print(f"\nClearing procedure for file '{filename}.pkl' completed")
+            else:
+                print(f"Removed {len(results) - len(output)} experiments from '{filename}.pkl ({len(output)} left)")
             # dump the file before writing to check if it is pickle-compliant
-            print(f"\nRemoving {len(results) - len(output)} experiments from '{filename}.pkl' ({len(output)} left)")
             dump = pickle.dumps(output)
             with open(path, 'wb') as file:
                 file.write(dump)
+            for external in externals:
+                os.remove(os.path.join(folder, external))
 
     @staticmethod
     def clear_exports():

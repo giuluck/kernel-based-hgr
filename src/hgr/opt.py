@@ -93,10 +93,6 @@ class KernelBasedHGR(HGR):
         # weight is null for all but the first one (this processing step allow to avoid degenerate cases when the
         # matrix is not full rank)
         f_indices, g_indices = KernelBasedHGR._get_linearly_independent(f=f, g=g)
-        print('\n\n\n')
-        print(f'F Indices: {f_indices}')
-        print(f'G Indices: {g_indices}')
-        print('\n\n\n')
         f_slim = f[:, f_indices]
         g_slim = g[:, g_indices]
         n, dx = f_slim.shape

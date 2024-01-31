@@ -1,12 +1,10 @@
 import argparse
 import logging
-
-import numpy as np
+import re
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear
-from src.hgr import DoubleKernelHGR, DensityHGR, ChiSquare, RandomizedDependencyCoefficient, SingleKernelHGR, \
-    AdversarialHGR
+from src.hgr import AdversarialHGR, DoubleKernelHGR, SingleKernelHGR
 
 # noinspection DuplicatedCode
 log = logging.getLogger("lightning_fabric")
@@ -27,35 +25,42 @@ datasets = dict(
     tanh=lambda n: NonLinear(fn='tanh', noise=n)
 )
 
-# list all the valid metrics
-metrics = {
-    'dkn': ('HGR-KB', DoubleKernelHGR()),
-    'skn': ('HGR-SK', SingleKernelHGR()),
-    'adv': ('HGR-NN', AdversarialHGR()),
-    'kde': ('HGR-KDE', DensityHGR()),
-    'chi': ('CHI^2', ChiSquare()),
-    'rdc': ('RDC', RandomizedDependencyCoefficient()),
-    'prs': ('PEARS', DoubleKernelHGR(degree_a=1, degree_b=1)),
-}
+
+# function to retrieve the valid metrics
+def metrics(key: str):
+    if key == 'adv':
+        return 'HGR-NN', AdversarialHGR()
+    elif key == 'dkn':
+        return 'HGR-KB', DoubleKernelHGR()
+    elif key == 'skn':
+        return 'HGR-SK', SingleKernelHGR()
+    elif re.compile('dkn-([0-9]+)').match(key):
+        degree = int(key[4:])
+        return f'HGR-KB ({degree})', DoubleKernelHGR(degree_a=degree, degree_b=degree)
+    elif re.compile('skn-([0-9]+)').match(key):
+        degree = int(key[4:])
+        return f'HGR-SK ({degree})', SingleKernelHGR(degree=degree)
+    else:
+        raise KeyError(f"Invalid key '{key}' for metrics")
+
 
 # build argument parser
-parser = argparse.ArgumentParser(description='Test multiple HGR metrics on multiple datasets')
+parser = argparse.ArgumentParser(description='Test the Kernel-based HGR on a given dataset')
 parser.add_argument(
     '-d',
     '--datasets',
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=['x_square', 'circle', 'y_square', 'sign', 'sin'],
-    help='the datasets on which to run the experiment'
+    default=['circle'],
+    help='the dataset on which to run the experiment'
 )
 parser.add_argument(
     '-m',
     '--metrics',
     type=str,
     nargs='*',
-    choices=list(metrics),
-    default=['dkn', 'skn', 'adv', 'kde'],
+    default=['dkn', 'adv'],
     help='the metrics used to compute the correlations'
 )
 parser.add_argument(
@@ -63,30 +68,8 @@ parser.add_argument(
     '--noises',
     type=float,
     nargs='+',
-    default=list(np.linspace(0.0, 10.0, num=31, endpoint=True).round(2)),
+    default=[1.0],
     help='the noise values used in the experiments'
-)
-parser.add_argument(
-    '-s',
-    '--seeds',
-    type=int,
-    nargs='+',
-    default=list(range(30)),
-    help='the number of tests per experiment'
-)
-parser.add_argument(
-    '-c',
-    '--columns',
-    type=int,
-    default=2,
-    help='the number of columns in the final plot'
-)
-parser.add_argument(
-    '-l',
-    '--legend',
-    type=int,
-    default=1,
-    help='where to position the legend in the final plot'
 )
 parser.add_argument(
     '-f',
@@ -111,10 +94,11 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
-print("Starting experiment 'correlations'...")
+print("Starting experiment 'kernels'...")
 for k, v in args.items():
     print('  >', k, '-->', v)
 print()
-args['datasets'] = {k: datasets[k] for k in args['datasets']}
-args['metrics'] = {k: v for k, v in [metrics[mt] for mt in args['metrics']]}
-CorrelationExperiment.correlations(**args)
+noises = args.pop('noises')
+args['datasets'] = [datasets[ds](n) for ds in args['datasets'] for n in noises]
+args['metrics'] = {k: v for k, v in [metrics(key=mt) for mt in args['metrics']]}
+CorrelationExperiment.kernels(**args)

@@ -9,13 +9,13 @@ import pandas as pd
 
 from src.datasets.dataset import Dataset
 
-SIZE: int = 101
+SIZE: int = 1001
 """The size of the dataset."""
 
 LINSPACE: bool = True
 """Whether to build the protected data from a linear space, or sample it uniformly."""
 
-SEED: int = 0
+SEED: int = 10
 """The random seed for generating the dataset."""
 
 
@@ -30,9 +30,9 @@ class Deterministic(Dataset, ABC):
         # take x within the interval [-1, 1] then duplicate it in order to have swapped signs for y if necessary
         s = np.linspace(-1, 1, num=SIZE, endpoint=True) if LINSPACE else rng.uniform(0, 1, size=SIZE)
         x = np.concatenate((s, s[::-1]))
-        # build y according to the function and add noise (use 1 + \sigma to have proportional noise)
+        # build y according to the function and add noise (proportional to the standard deviation of the data)
         y = self._function(x=x)
-        y = y * (1 + rng.normal(loc=0.0, scale=self.noise, size=len(y)))
+        y = y + rng.normal(loc=0.0, scale=self.noise * y.std(ddof=0), size=len(y))
         # return the data
         return x, y
 
@@ -137,11 +137,9 @@ class NonLinear(Deterministic):
             raise AssertionError(f"Unknown non-linear function name '{self.fn}'")
 
     def f(self, a: np.ndarray) -> np.ndarray:
-        # apply the function as it is while using the protected input to rescale
         return self._function(a)
 
     def g(self, b: np.ndarray) -> np.ndarray:
-        # rescale with respect to the target and return it as it is
         return b
 
     def plot(self, ax: plt.Axes, **kwargs):

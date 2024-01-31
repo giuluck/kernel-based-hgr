@@ -44,6 +44,11 @@ parser.add_argument(
     help='provides a pattern to be matched with the experiment identifier'
 )
 parser.add_argument(
+    '--force',
+    action='store_true',
+    help='clears everything without asking for confirmation at the end'
+)
+parser.add_argument(
     '--exports',
     action='store_true',
     help='clears the export files rather than the experiment results (all the other parameters are ignored)'

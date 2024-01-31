@@ -36,21 +36,25 @@ class CorrelationExperiment(Experiment):
     """An experiment where the correlation between two variables is computed."""
 
     def _compute(self) -> Experiment.Result:
-        pl.seed_everything(0, workers=True)
+        pl.seed_everything(self.seed, workers=True)
         start = time.time()
         a = self.dataset.excluded(backend='numpy')
         b = self.dataset.target(backend='numpy')
         hgr, additional = self.metric.correlation(a=a, b=b)
         gap = time.time() - start
-        if len(additional) > 0:
+        # store external files only for NN kernels, in the other cases include the additional results in the object
+        if isinstance(self.metric, AdversarialHGR):
             external = f'{self.key}.pkl'
             with importlib.resources.path('experiments.results', external) as path:
-                assert not path.exists(), f"File '{self.key}' is already present in package 'experiments.results'"
+                # overwrite files rather than asserting that they are not present since an abrupt interruption of the
+                # DoE might cause leaking external files to be stored while the original results are not
+                if path.exists():
+                    print(f"Overwriting file '{self.key}' since it is already present in package 'experiments.results'")
             with open(path, 'wb') as file:
                 pickle.dump(additional, file=file)
+            return Experiment.Result(timestamp=start, execution=gap, external=external, correlation=hgr)
         else:
-            external = None
-        return Experiment.Result(timestamp=start, execution=gap, external=external, correlation=hgr)
+            return Experiment.Result(timestamp=start, execution=gap, external=None, correlation=hgr, **additional)
 
     @property
     def name(self) -> str:
@@ -216,7 +220,7 @@ class CorrelationExperiment(Experiment):
 
     @staticmethod
     def kernels(datasets: Iterable[Deterministic],
-                degrees: Iterable[int] = (),
+                metrics: Dict[str, HGR],
                 tests: int = 30,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False,
@@ -246,12 +250,7 @@ class CorrelationExperiment(Experiment):
             return abs(np.mean(ff_aa * gg_bb)), ff_aa, gg_bb
 
         # run experiments
-        metrics = {
-            'ORACLE': Oracle,
-            **{f'HGR-KB ({d})': DoubleKernelHGR(degree_a=d, degree_b=d) for d in degrees},
-            'HGR-KB': DoubleKernelHGR(),
-            'HGR-NN': AdversarialHGR()
-        }
+        metrics = {'ORACLE': Oracle, **metrics}
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
             save_time=save_time,
