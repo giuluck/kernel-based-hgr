@@ -82,6 +82,11 @@ parser.add_argument(
     help='the number of tests per experiment'
 )
 parser.add_argument(
+    '--test',
+    action='store_true',
+    help='whether to compute the correlations on test data as well'
+)
+parser.add_argument(
     '-c',
     '--columns',
     type=int,

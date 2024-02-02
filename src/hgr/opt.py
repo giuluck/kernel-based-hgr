@@ -8,7 +8,7 @@ import torch
 from scipy.optimize import NonlinearConstraint, minimize
 from scipy.stats import pearsonr
 
-from src.hgr import HGR
+from src.hgr import KernelsHGR
 
 DEGREE: int = 7
 """Default degree for kernel-based metrics."""
@@ -24,7 +24,7 @@ EPS: float = 0.0
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class KernelBasedHGR(HGR):
+class KernelBasedHGR(KernelsHGR):
     """Kernel-based HGR interface."""
 
     lasso: float = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=LASSO)
@@ -44,6 +44,14 @@ class KernelBasedHGR(HGR):
     def degree_b(self) -> int:
         """The kernel degree for the first variable."""
         pass
+
+    def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
+        # center the kernels with respect to the training data
+        a_ref = experiment.dataset.excluded(backend='numpy')
+        b_ref = experiment.dataset.target(backend='numpy')
+        f = np.stack([a ** d - np.mean(a_ref ** d) for d in np.arange(self.degree_a) + 1], axis=1)
+        g = np.stack([b ** d - np.mean(b_ref ** d) for d in np.arange(self.degree_b) + 1], axis=1)
+        return f @ experiment.result['alpha'], g @ experiment.result['beta']
 
     @staticmethod
     def kernel(v, degree: int, use_torch: bool):

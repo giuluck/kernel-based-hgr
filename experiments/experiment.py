@@ -137,11 +137,11 @@ class Experiment(Cacheable):
             # -------------------------------------------------------------------------------------
             # QUICK PATCH TO HANDLE ORACLE METRIC WHICH NEEDS TO BE BUILT WITH A DATASET ISTANCE
             metric = config.get('metric')
-            if metric is not None and isinstance(metric, Oracle.__class__):
+            if metric is not None and isinstance(metric, Oracle):
                 dataset = config.get('dataset')
                 assert dataset is not None, "Trying to use Oracle metric without passing a dataset"
                 # noinspection PyArgumentList
-                config['metric'] = metric(dataset=dataset)
+                config['metric'] = metric.instance(dataset=dataset)
             # -------------------------------------------------------------------------------------
             experiment = cls(**config)
             experiments[index] = experiment

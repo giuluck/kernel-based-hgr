@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from tqdm import trange
 
-from src.hgr.hgr import HGR
+from src.hgr.hgr import KernelsHGR
 
 DEVICE: torch.DeviceObjType = torch.device(str("cuda:0") if torch.cuda.is_available() else "cpu")
 """The torch device on which to run the adversarial networks."""
@@ -20,7 +20,7 @@ EPOCHS: int = 1000
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class AdversarialHGR(HGR):
+class AdversarialHGR(KernelsHGR):
     @property
     def name(self) -> str:
         return 'nn'
@@ -39,6 +39,13 @@ class AdversarialHGR(HGR):
         model = HGR_NN(model_F=net_2, model_G=net_1, device=DEVICE, display=False)
         correlation = model(yhat=b, s_var=a, nb=EPOCHS)
         return correlation, net_1, net_2
+
+    def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
+        a = torch.tensor(a, dtype=torch.float32).reshape((-1, 1))
+        b = torch.tensor(b, dtype=torch.float32).reshape((-1, 1))
+        fa = experiment.result['f'](a).numpy(force=True).flatten()
+        gb = experiment.result['g'](b).numpy(force=True).flatten()
+        return fa, gb
 
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
         a = torch.tensor(a, dtype=torch.float)
