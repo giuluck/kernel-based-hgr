@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from scipy.stats import pearsonr
 
-from src.datasets.deterministic import Deterministic
+from src.datasets import Deterministic
 from src.hgr import HGR
 
 

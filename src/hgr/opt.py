@@ -141,6 +141,7 @@ class KernelBasedHGR(HGR):
         )
         # if no guess is provided, set the initial point as [ 1 / std(F @ 1) | 1 / std(G @ 1) ] then solve the problem
         if self.guess is None:
+            # TODO: check variability if np.random is used
             alp0 = np.ones(dx) / f_slim.sum(axis=1).std(ddof=0)
             bet0 = np.ones(dy) / g_slim.sum(axis=1).std(ddof=0)
             x0 = np.concatenate((alp0, bet0))

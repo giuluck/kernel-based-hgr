@@ -8,23 +8,22 @@ from src.datasets import Polynomial, NonLinear
 from src.hgr import DoubleKernelHGR, DensityHGR, ChiSquare, RandomizedDependencyCoefficient, SingleKernelHGR, \
     AdversarialHGR
 
-# noinspection DuplicatedCode
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
 log.setLevel(logging.ERROR)
 
 # list all the valid datasets
 datasets = dict(
-    linear=lambda n: Polynomial(degree_x=1, degree_y=1, noise=n),
-    x_square=lambda n: Polynomial(degree_x=2, degree_y=1, noise=n),
-    x_cubic=lambda n: Polynomial(degree_x=3, degree_y=1, noise=n),
-    y_square=lambda n: Polynomial(degree_x=1, degree_y=2, noise=n),
-    y_cubic=lambda n: Polynomial(degree_x=1, degree_y=3, noise=n),
-    circle=lambda n: Polynomial(degree_x=2, degree_y=2, noise=n),
-    sign=lambda n: NonLinear(fn='sign', noise=n),
-    relu=lambda n: NonLinear(fn='relu', noise=n),
-    sin=lambda n: NonLinear(fn='sin', noise=n),
-    tanh=lambda n: NonLinear(fn='tanh', noise=n)
+    linear=lambda n, s: Polynomial(degree_x=1, degree_y=1, noise=n, seed=s),
+    x_square=lambda n, s: Polynomial(degree_x=2, degree_y=1, noise=n, seed=s),
+    x_cubic=lambda n, s: Polynomial(degree_x=3, degree_y=1, noise=n, seed=s),
+    y_square=lambda n, s: Polynomial(degree_x=1, degree_y=2, noise=n, seed=s),
+    y_cubic=lambda n, s: Polynomial(degree_x=1, degree_y=3, noise=n, seed=s),
+    circle=lambda n, s: Polynomial(degree_x=2, degree_y=2, noise=n, seed=s),
+    sign=lambda n, s: NonLinear(fn='sign', noise=n, seed=s),
+    relu=lambda n, s: NonLinear(fn='relu', noise=n, seed=s),
+    sin=lambda n, s: NonLinear(fn='sin', noise=n, seed=s),
+    tanh=lambda n, s: NonLinear(fn='tanh', noise=n, seed=s)
 )
 
 # list all the valid metrics
@@ -63,15 +62,23 @@ parser.add_argument(
     '--noises',
     type=float,
     nargs='+',
-    default=list(np.linspace(0.0, 10.0, num=31, endpoint=True).round(2)),
+    default=list(np.linspace(0.0, 3.0, num=16, endpoint=True).round(2)),
     help='the noise values used in the experiments'
 )
 parser.add_argument(
-    '-s',
-    '--seeds',
+    '-ds',
+    '--data-seeds',
     type=int,
     nargs='+',
-    default=list(range(30)),
+    default=list(range(10)),
+    help='the number of dataset variants per experiment'
+)
+parser.add_argument(
+    '-as',
+    '--algorithm-seeds',
+    type=int,
+    nargs='+',
+    default=list(range(10)),
     help='the number of tests per experiment'
 )
 parser.add_argument(

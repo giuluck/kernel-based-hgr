@@ -51,15 +51,14 @@ parser.add_argument(
 parser.add_argument(
     '--exports',
     action='store_true',
-    help='clears the export files rather than the experiment results (all the other parameters are ignored)'
+    help='clears only the export files while keeping the experiment results (all the other parameters are ignored)'
 )
 
 # parse arguments and decide what to clear
 args = parser.parse_args().__dict__
-if args.pop('exports'):
-    print('Starting exports clearing procedure...\n')
-    Experiment.clear_exports()
-else:
+print('Starting exports clearing procedure...')
+Experiment.clear_exports()
+if args.pop('exports') is False:
     print('Starting experiments clearing procedure...')
     for k, v in args.items():
         print('  >', k, '-->', v)

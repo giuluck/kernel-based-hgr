@@ -73,11 +73,11 @@ class Dataset(Cacheable):
         """The dataset data."""
         return self._data.copy()
 
-    def input(self, backend: BackendType = 'pandas') -> BackendOutput:
+    def input(self, backend: BackendType = 'numpy') -> BackendOutput:
         """The input features matrix."""
         return Dataset._to_backend(v=self._data.drop(columns=self.target_name), backend=backend)
 
-    def target(self, backend: BackendType = 'pandas') -> BackendOutput:
+    def target(self, backend: BackendType = 'numpy') -> BackendOutput:
         """The output target vector."""
         return Dataset._to_backend(v=self._data[self.target_name], backend=backend)
 

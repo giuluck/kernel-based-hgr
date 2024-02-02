@@ -13,8 +13,7 @@ import torch
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from experiments.experiment import Experiment
-from src.datasets import Dataset
-from src.datasets.deterministic import Deterministic
+from src.datasets import Dataset, Deterministic
 from src.hgr import DoubleKernelHGR, HGR, KernelBasedHGR, AdversarialHGR, Oracle
 
 PALETTE: List[str] = [
@@ -114,10 +113,11 @@ class CorrelationExperiment(Experiment):
                 fig.show()
 
     @staticmethod
-    def correlations(datasets: Dict[str, Callable[[float], Deterministic]],
+    def correlations(datasets: Dict[str, Callable[[float, int], Deterministic]],
                      metrics: Dict[str, HGR],
-                     noises: Iterable[float] = np.linspace(0.0, 3.0, num=31, endpoint=True).round(2),
-                     seeds: Iterable[int] = range(30),
+                     noises: Iterable[float] = np.linspace(0.0, 3.0, num=16, endpoint=True).round(2),
+                     data_seeds: Iterable[int] = range(10),
+                     algorithm_seeds: Iterable[int] = range(10),
                      columns: int = 2,
                      legend: int = 1,
                      formats: Iterable[str] = ('png',),
@@ -128,9 +128,9 @@ class CorrelationExperiment(Experiment):
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
             save_time=save_time,
-            dataset={(k, n): fn(n) for k, fn in datasets.items() for n in noises},
+            dataset={(k, n, s): fn(n, s) for k, fn in datasets.items() for n in noises for s in data_seeds},
             metric=metrics,
-            seed=list(seeds)
+            seed=list(algorithm_seeds)
         )
         # build results
         results = []
@@ -176,7 +176,7 @@ class CorrelationExperiment(Experiment):
             ax.set_ylim((-0.1, 1.1))
             # plot the original data without noise
             sub_ax = inset_axes(ax, width='30%', height='30%', loc='upper right')
-            datasets[name](0.0).plot(ax=sub_ax, color='black')
+            datasets[name](0.0, 0).plot(ax=sub_ax, color='black')
             sub_ax.set_xticks([])
             sub_ax.set_yticks([])
         # plot the legend
@@ -219,7 +219,7 @@ class CorrelationExperiment(Experiment):
             fig_time.show()
 
     @staticmethod
-    def kernels(datasets: Iterable[Deterministic],
+    def kernels(datasets: Iterable[Callable[[float], Deterministic]],
                 metrics: Dict[str, HGR],
                 tests: int = 30,
                 formats: Iterable[str] = ('png',),
@@ -251,14 +251,15 @@ class CorrelationExperiment(Experiment):
 
         # run experiments
         metrics = {'ORACLE': Oracle, **metrics}
+        datasets_0 = [dataset_fn(0) for dataset_fn in datasets]
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
             save_time=save_time,
-            dataset={dataset.key: dataset for dataset in datasets},
+            dataset={dataset.key: dataset for dataset in datasets_0},
             metric=metrics,
             seed=0
         )
-        for dataset in datasets:
+        for dataset_fn, dataset in zip(datasets, datasets_0):
             # build and plot results
             a = dataset.excluded(backend='numpy')
             b = dataset.target(backend='numpy')
@@ -268,17 +269,16 @@ class CorrelationExperiment(Experiment):
                 tight_layout=True
             )
             fa, gb = {'index': a}, {'index': b}
-            # retrieve metric kernels (switch sign to match the same orientation of the optimal kernels)
-            anchors = np.random.default_rng(0).choice(range(len(a)), size=10, replace=False)
+            # retrieve metric kernels
             for name, metric in metrics.items():
-                _, f_a, g_b = hgr(xx=experiments[(dataset.key, name)], aa=a, bb=b)
+                _, fa_current, gb_current = hgr(xx=experiments[(dataset.key, name)], aa=a, bb=b)
+                # for all the non-oracle kernels, switch sign to match kernel if necessary
                 if name != 'ORACLE':
-                    kernel_anchors = f_a[anchors]
-                    oracle_anchors = fa['ORACLE'][anchors]
-                    anchor_signs = np.sign(kernel_anchors * oracle_anchors)
-                    if anchor_signs.sum() < 0:
-                        f_a, g_b = -f_a, -g_b
-                fa[name], gb[name] = f_a, g_b
+                    fa_signs = np.sign(fa_current * fa['ORACLE'])
+                    fa_current = np.sign(fa_signs.sum()) * fa_current
+                    gb_signs = np.sign(gb_current * gb['ORACLE'])
+                    gb_current = np.sign(gb_signs.sum()) * gb_current
+                fa[name], gb[name] = fa_current, gb_current
             fa, gb = pd.DataFrame(fa).set_index('index'), pd.DataFrame(gb).set_index('index')
             # plot kernels
             for data, kernel, labels in zip([fa, gb], ['A', 'B'], [('a', 'f(a)'), ('b', 'g(b)')]):
@@ -298,7 +298,7 @@ class CorrelationExperiment(Experiment):
                 ax.legend(loc='best')
             # plot data
             ax = axes['data']
-            kwargs = dict() if dataset.noise == 0.0 else dict(alpha=0.6, edgecolor='black')
+            kwargs = dict() if dataset.noise == 0.0 else dict(alpha=0.4, edgecolor='black')
             dataset.plot(ax=ax, color='black', **kwargs)
             ax.set_title('Data')
             ax.set_xlabel('a')
@@ -312,7 +312,9 @@ class CorrelationExperiment(Experiment):
                 'hgr': experiments[(dataset.key, metric)].result['correlation']
             } for metric in metrics.keys()]
             for seed in np.arange(tests) + 1:
-                x, y = dataset.from_seed(seed=seed)
+                dataset_seed = dataset_fn(seed)
+                x = dataset_seed.excluded(backend='numpy')
+                y = dataset_seed.target(backend='numpy')
                 correlations += [{
                     'metric': metric,
                     'split': 'test',
@@ -324,7 +326,7 @@ class CorrelationExperiment(Experiment):
                 y='hgr',
                 x='split',
                 hue='metric',
-                estimator='mean',
+                estimator='median',
                 errorbar='sd',
                 palette=PALETTE[:len(metrics)]
             )
