@@ -27,15 +27,15 @@ datasets = dict(
 )
 
 # list all the valid metrics
-metrics = {
-    'dkn': ('HGR-KB', DoubleKernelHGR()),
-    'skn': ('HGR-SK', SingleKernelHGR()),
-    'adv': ('HGR-NN', AdversarialHGR()),
-    'kde': ('HGR-KDE', DensityHGR()),
-    'chi': ('CHI^2', ChiSquare()),
-    'rdc': ('RDC', RandomizedDependencyCoefficient()),
-    'prs': ('PEARS', DoubleKernelHGR(degree_a=1, degree_b=1)),
-}
+metrics = dict(
+    dkn=('HGR-KB', DoubleKernelHGR()),
+    skn=('HGR-SK', SingleKernelHGR()),
+    adv=('HGR-NN', AdversarialHGR()),
+    kde=('HGR-KDE', DensityHGR()),
+    chi=('CHI^2', ChiSquare()),
+    rdc=('RDC', RandomizedDependencyCoefficient()),
+    prs=('PEARS', DoubleKernelHGR(degree_a=1, degree_b=1))
+)
 
 # build argument parser
 parser = argparse.ArgumentParser(description='Test multiple HGR metrics on multiple datasets')
@@ -55,7 +55,7 @@ parser.add_argument(
     nargs='*',
     choices=list(metrics),
     default=['dkn', 'skn', 'adv', 'kde'],
-    help='the metrics used to compute the correlations'
+    help='the metric used to compute the correlations'
 )
 parser.add_argument(
     '-n',

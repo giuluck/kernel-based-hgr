@@ -3,7 +3,7 @@ from typing import List
 
 from experiments.experiment import Experiment
 
-FILES: List[str] = ['correlation']
+FILES: List[str] = ['learning', 'correlation']
 
 # build argument parser
 parser = argparse.ArgumentParser(description='Clears the results in the experiment files')

@@ -1,8 +1,8 @@
 import importlib.resources
 import pickle
 import time
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Callable, Iterable
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Callable, Iterable, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,6 +34,15 @@ PALETTE: List[str] = [
 class CorrelationExperiment(Experiment):
     """An experiment where the correlation between two variables is computed."""
 
+    dataset: Dataset = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The dataset used in the experiment."""
+
+    metric: HGR = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The HGR metric used in the experiment."""
+
+    seed: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The random seed used in the experiment."""
+
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(self.seed, workers=True)
         start = time.time()
@@ -59,6 +68,19 @@ class CorrelationExperiment(Experiment):
     def name(self) -> str:
         return 'correlation'
 
+    @property
+    def configuration(self) -> Dict[str, Any]:
+        return dict(
+            experiment=self.name,
+            dataset=self.dataset.configuration,
+            metric=self.metric.configuration,
+            seed=self.seed
+        )
+
+    @property
+    def key(self) -> str:
+        return f'{self.name}_{self.dataset.key}_{self.metric.key}_{self.seed}'
+
     @staticmethod
     def monotonicity(datasets: Iterable[Dataset],
                      degrees_a: Iterable[int] = (1, 2, 3, 4, 5, 6, 7),
@@ -72,6 +94,7 @@ class CorrelationExperiment(Experiment):
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
             save_time=save_time,
+            verbose=False,
             seed=0,
             dataset={dataset.key: dataset for dataset in datasets},
             metric={(da, db): DoubleKernelHGR(degree_a=da, degree_b=db) for da in degrees_a for db in degrees_b}
@@ -130,6 +153,7 @@ class CorrelationExperiment(Experiment):
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
             save_time=save_time,
+            verbose=False,
             dataset={(k, n, s): fn(n, s) for k, fn in datasets.items() for n in noises for s in data_seeds},
             metric=metrics,
             seed=list(algorithm_seeds)
@@ -255,6 +279,7 @@ class CorrelationExperiment(Experiment):
         experiments = CorrelationExperiment.doe(
             file_name='correlation',
             save_time=save_time,
+            verbose=False,
             dataset={dataset.key: dataset for dataset in datasets_0},
             metric=metrics,
             seed=0

@@ -1,6 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -34,6 +34,10 @@ class Communities(Dataset):
     @property
     def classification(self) -> bool:
         return False
+
+    @property
+    def units(self) -> List[int]:
+        return [256, 256]
 
     @property
     def excluded_name(self) -> str:

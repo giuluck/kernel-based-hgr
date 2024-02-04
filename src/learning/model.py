@@ -1,12 +1,11 @@
 from typing import Optional, Union, Iterable, Tuple, Dict
 
-import lightning.pytorch as pl
+import pytorch_lightning as pl
 import torch
 from torch import nn, Tensor
 from torch.autograd import Variable
 from torch.optim import Optimizer, Adam
 
-from src.datasets import Dataset
 from src.hgr.hgr import HGR
 
 
@@ -17,20 +16,20 @@ class MultiLayerPerceptron(pl.LightningModule):
     """The threshold to be imposed in the penalty."""
 
     def __init__(self,
-                 dataset: Dataset,
                  units: Iterable[int],
                  classification: bool,
+                 feature: int,
                  penalty: Optional[HGR] = None,
                  alpha: Optional[float] = None):
         """
-        :param dataset:
-            The dataset on which the neural network will be trained.
-
         :param units:
             The neural network hidden units.
 
         :param classification:
             Whether we are dealing with a binary classification or a regression task.
+
+        :param feature:
+            The index of the excluded feature.
 
         :param penalty:
             The kind of penalty to be imposed, or None for unconstrained model.
@@ -44,9 +43,9 @@ class MultiLayerPerceptron(pl.LightningModule):
         # disable lightning manual optimization to potentially deal with two optimizers
         self.automatic_optimization = False
 
-        # build the layers by prepending the initial and final units
+        # build the layers by appending the final unit
         layers = []
-        units = [len(dataset.input_names), *units]
+        units = list(units)
         for inp, out in zip(units[:-1], units[1:]):
             layers.append(nn.Linear(inp, out))
             layers.append(nn.ReLU())
@@ -62,7 +61,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         self.model: nn.Sequential = nn.Sequential(*layers)
         """The neural network."""
 
-        self.loss: nn.Module = nn.BCELoss() if classification else nn.MSELoss()
+        self.loss: nn.Module = nn.BCEWithLogitsLoss() if classification else nn.MSELoss()
         """The loss function."""
 
         self.penalty: HGR = penalty
@@ -71,7 +70,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         self.alpha: Union[None, float, Variable] = alpha
         """The alpha value for balancing compiled and regularized loss."""
 
-        self.feature: int = dataset.excluded_index
+        self.feature: int = feature
         """The index of the excluded feature."""
 
     def forward(self, x: Tensor) -> Tensor:
@@ -83,7 +82,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         # retrieve the data and the optimizers
         inp, out = batch
         optimizers = self.optimizers()
-        def_opt, reg_opt = optimizers if isinstance(optimizers, tuple) else (optimizers, None)
+        def_opt, reg_opt = optimizers if isinstance(optimizers, list) else (optimizers, None)
         # perform the standard loss minimization step
         def_opt.zero_grad()
         pred = self.model(inp)
@@ -96,7 +95,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         else:
             reg = self.penalty(a=inp[:, self.feature], b=pred.squeeze())
             reg_loss = self.alpha * reg
-            alpha = torch.tensor(self.alpha)
+            alpha = self.alpha
         # build the total minimization loss and perform the backward pass
         tot_loss = def_loss + reg_loss
         self.manual_backward(tot_loss)
@@ -113,7 +112,6 @@ class MultiLayerPerceptron(pl.LightningModule):
             reg_opt.step()
         # return the information about the training
         return {
-            'pred': pred,
             'loss': tot_loss,
             'def_loss': def_loss,
             'reg_loss': reg_loss,
@@ -121,9 +119,13 @@ class MultiLayerPerceptron(pl.LightningModule):
             'reg': reg
         }
 
+    def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Dict[str, Tensor]:
+        return dict()
+
     def configure_optimizers(self) -> Union[Optimizer, Tuple[Optimizer, Optimizer]]:
         """Configures the optimizer for the MLP depending on whether there is a variable alpha or not."""
         if isinstance(self.alpha, Variable):
+            # noinspection PyTypeChecker
             return Adam(params=self.model.parameters()), Adam(params=[self.alpha])
         else:
             return Adam(params=self.model.parameters())

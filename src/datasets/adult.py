@@ -1,6 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import pandas as pd
 
@@ -31,6 +31,10 @@ class Adult(Dataset):
     @property
     def classification(self) -> bool:
         return True
+
+    @property
+    def units(self) -> List[int]:
+        return [32, 32, 32]
 
     @property
     def excluded_name(self) -> str:

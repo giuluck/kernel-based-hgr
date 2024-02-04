@@ -1,38 +1,77 @@
-from typing import Optional, List, Dict, Tuple
+import time
+from typing import List, Dict, Any, Optional
 
-import lightning.pytorch as pl
-import pandas as pd
-from sklearn.metrics import r2_score, mean_squared_error
-from torch import Tensor
+import pytorch_lightning as pl
+import torch
+import wandb
+
+PROJECT: str = 'kernel-based-hgr'
+"""The name of the wandb project."""
 
 
 class Callback(pl.Callback):
-    def __init__(self, verbose: bool = True):
-        self.verbose: bool = verbose
-        self.history: Optional[pd.DataFrame] = None
-        self._history: List[dict] = []
+    def __init__(self, experiment: Any):
+        """
+        :param experiment:
+            The experiment instance.
+        """
+        self._experiment: Any = experiment
+        self._time: Optional[float] = None
+        self._cache: List[Dict[str, Any]] = []
+        self._results: List[Dict[str, Any]] = []
+
+    @property
+    def results(self) -> Dict[str, list]:
+        keys = [] if len(self._results) == 0 else self._results[0].keys()
+        results = {key: [] for key in keys}
+        for res in self._results:
+            for key in keys:
+                results[key].append(res[key])
+        return results
+
+    def on_train_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        # start wandb if necessary
+        if self._experiment.entity is not None:
+            wandb.init(
+                project=PROJECT,
+                entity=self._experiment.entity,
+                name=self._experiment.key,
+                config=self._experiment.configuration
+            )
+
+    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        self._time = time.time()
 
     def on_train_batch_end(self,
                            trainer: pl.Trainer,
-                           module: pl.LightningModule,
-                           outputs: Dict[str, Tensor],
-                           batch: Tuple[Tensor, Tensor],
+                           pl_module: pl.LightningModule,
+                           outputs: Dict[str, torch.Tensor],
+                           batch: Any,
                            batch_idx: int):
-        inp, out = batch
-        pred = outputs.pop('pred')
-        outputs = {k: v.numpy(force=True).item() for k, v in outputs.items()}
-        outputs = {
-            'batch': batch_idx,
-            'epoch': trainer.current_epoch + 1,
-            'r2': r2_score(y_true=out.numpy(force=True), y_pred=pred.numpy(force=True)),
-            'mse': mean_squared_error(y_true=out.numpy(force=True), y_pred=pred.numpy(force=True)),
-            **outputs
-        }
-        if self.verbose:
-            for k, v in outputs.items():
-                print(k, '-->', v)
-            print()
-        self._history.append(outputs)
+        # append batch output on cache
+        self._cache.append(outputs)
 
-    def on_train_end(self, trainer, pl_module):
-        self.history = pd.DataFrame(self._history)
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        # compute mean of cached outputs
+        keys = [] if len(self._cache) == 0 else self._cache[0].keys()
+        cache = {key: 0.0 for key in keys}
+        for output in self._cache:
+            for key in keys:
+                cache[key] += output[key]
+        # build results dictionary and store it
+        results = {
+            **{key: value / len(self._cache) for key, value in cache.items()},
+            'time': time.time() - self._time,
+            'model': pl_module
+        }
+        self._results.append(results)
+        if self._experiment.entity is not None:
+            wandb.log(results)
+        # empty cache and time
+        self._time = None
+        self._cache = []
+
+    def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        # close wandb if necessary
+        if self._experiment.entity:
+            wandb.finish()

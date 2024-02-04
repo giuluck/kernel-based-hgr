@@ -55,8 +55,14 @@ class AdversarialHGR(KernelsHGR):
         return float(correlation), dict(f=net_1, g=net_2)
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        correlation, _, _ = AdversarialHGR.compute_with_networks(a=a, b=b)
-        return correlation
+        def standardize(t: torch.Tensor) -> torch.Tensor:
+            t_std, t_mean = torch.std_mean(t, correction=0)
+            return (t - t_mean) / (t_std + 0.000000001)
+
+        _, net_1, net_2 = AdversarialHGR.compute_with_networks(a=a.detach(), b=b.detach())
+        f = net_1(a.reshape(-1, 1))
+        g = net_2(b.reshape(-1, 1))
+        return torch.mean(standardize(f) * standardize(g))
 
 
 # The following code is obtained from the official repository of

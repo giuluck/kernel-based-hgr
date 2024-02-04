@@ -1,11 +1,12 @@
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Union, Literal, List
+from typing import Union, Literal, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.model_selection import StratifiedKFold, KFold, train_test_split
 
 from src.serializable import Cacheable
 
@@ -48,8 +49,14 @@ class Dataset(Cacheable):
         pass
 
     @property
+    @abstractmethod
+    def units(self) -> List[int]:
+        """The number of hidden units in the neural model trained on the dataset."""
+        pass
+
+    @property
     def input_names(self) -> List[str]:
-        return [column for column in self._data.dataframe.columns if column != self.target_name]
+        return [column for column in self._data.columns if column != self.target_name]
 
     @property
     @abstractmethod
@@ -68,10 +75,16 @@ class Dataset(Cacheable):
         """The index of the excluded feature within the input matrix."""
         return self.input_names.index(self.excluded_name)
 
-    @property
-    def data(self) -> pd.DataFrame:
-        """The dataset data."""
-        return self._data.copy()
+    def data(self, folds: int, seed: int) -> List[Tuple[pd.DataFrame, pd.DataFrame]]:
+        """Returns a list of tuples <train, val> (if folds == 1, splits between 70% train and 30% test)."""
+        data = self._data
+        if folds == 1:
+            stratify = data[self.target_name] if self.classification else None
+            idx = [train_test_split(data.index, test_size=0.3, stratify=stratify, random_state=seed)]
+        else:
+            kf = StratifiedKFold if self.classification else KFold
+            idx = kf(n_splits=folds, shuffle=True, random_state=seed).split(X=data.index, y=data[self.target_name])
+        return [(data.iloc[tr], data.iloc[ts]) for tr, ts in idx]
 
     def input(self, backend: BackendType = 'numpy') -> BackendOutput:
         """The input features matrix."""
@@ -90,7 +103,7 @@ class Dataset(Cacheable):
         ax.scatter(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
 
     def __len__(self) -> int:
-        return len(self.data)
+        return len(self._data)
 
     @staticmethod
     def _to_backend(v: Union[pd.Series, pd.DataFrame], backend: BackendType) -> BackendOutput:

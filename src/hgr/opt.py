@@ -224,8 +224,8 @@ class KernelBasedHGR(KernelsHGR):
             fa = standardize(f @ alpha)
         else:
             alpha, beta = self._higher_order_coefficients(f=f.numpy(force=True), g=g.numpy(force=True))
-            fa = standardize(f @ torch.tensor(alpha))
-            gb = standardize(g @ torch.tensor(beta))
+            fa = standardize(f @ torch.tensor(alpha, dtype=f.dtype))
+            gb = standardize(g @ torch.tensor(beta, dtype=g.dtype))
         # return the correlation as the absolute value of the vector product (since the vectors are standardized)
         return torch.abs(fa @ gb)
 

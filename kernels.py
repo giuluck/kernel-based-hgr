@@ -11,7 +11,7 @@ log.propagate = False
 log.setLevel(logging.ERROR)
 
 
-# function to retrieve the valid metrics
+# function to retrieve the valid dataset
 def datasets(key, noise):
     if key == 'linear':
         return lambda s: Polynomial(degree_x=1, degree_y=1, noise=noise, seed=s)
@@ -37,7 +37,7 @@ def datasets(key, noise):
         raise KeyError(f"Invalid key '{key}' for dataset")
 
 
-# function to retrieve the valid metrics
+# function to retrieve the valid metric
 def metrics(key):
     if key == 'adv':
         return 'HGR-NN', AdversarialHGR()
@@ -52,11 +52,11 @@ def metrics(key):
         degree = int(key[4:])
         return f'HGR-SK ({degree})', SingleKernelHGR(degree=degree)
     else:
-        raise KeyError(f"Invalid key '{key}' for metrics")
+        raise KeyError(f"Invalid key '{key}' for metric")
 
 
 # build argument parser
-parser = argparse.ArgumentParser(description='Test the Kernel-based HGR on a given dataset')
+parser = argparse.ArgumentParser(description='Inspect the HGR kernels on a given dataset')
 parser.add_argument(
     '-d',
     '--datasets',
@@ -71,7 +71,7 @@ parser.add_argument(
     type=str,
     nargs='*',
     default=['dkn-2', 'dkn', 'adv'],
-    help='the metrics used to compute the correlations'
+    help='the metric used to compute the correlations'
 )
 parser.add_argument(
     '-n',

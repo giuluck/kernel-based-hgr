@@ -5,13 +5,12 @@ import pickle
 import re
 import time
 from abc import abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Any, List, Optional, Iterable, Callable
 
 from tqdm import tqdm
 
-from src.datasets import Dataset
-from src.hgr import HGR, Oracle
+from src.hgr import Oracle
 from src.serializable import Cacheable, Serializable
 
 
@@ -49,15 +48,6 @@ class Experiment(Cacheable):
         def configuration(self) -> Dict[str, Any]:
             return dict(external=self._external, **self._kwargs)
 
-    dataset: Dataset = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The dataset used in the experiment."""
-
-    metric: HGR = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The HGR metric used in the experiment."""
-
-    seed: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=0)
-    """The random seed used in the experiment."""
-
     @property
     @abstractmethod
     def name(self) -> str:
@@ -79,26 +69,8 @@ class Experiment(Cacheable):
         """The full output of the experiment, i.e., configuration and result."""
         return {**self.configuration, 'result': self.result.configuration}
 
-    @property
-    def configuration(self) -> Dict[str, Any]:
-        return {
-            'experiment': self.name,
-            'dataset': self.dataset.configuration,
-            'metric': self.metric.configuration,
-            'seed': self.seed
-        }
-
-    @property
-    def key(self) -> str:
-        return f'{self.name}_{self.dataset.key}_{self.metric.key}_{self.seed}'
-
-    @staticmethod
-    def external(self) -> Optional[str]:
-        """Name of the """
-        return f'{self.key}.pkl'
-
     @classmethod
-    def doe(cls, file_name: str, save_time: int, **configuration: Any) -> Dict[Any, 'Experiment']:
+    def doe(cls, file_name: str, save_time: int, verbose: bool, **configuration: Any) -> Dict[Any, 'Experiment']:
         """Runs a combinatorial design of experiments (DoE) with the given characteristics. If possible, loads results
         from the given file which must be stored in the 'results' sub-package. When experiments are running, stores
         their results in the given file every <save_time> seconds."""
@@ -131,11 +103,14 @@ class Experiment(Cacheable):
         experiments = {}
         gap = time.time()
         to_save = False
-        for index, param in tqdm(zip(indices, parameters), total=total, desc='Fetching Experiments'):
+        iterable = enumerate(zip(indices, parameters))
+        if not verbose:
+            iterable = tqdm(iterable, total=total, desc='Fetching Experiments')
+        for i, (index, param) in iterable:
             # build the input configuration and use it to create an instance of the experiment
             config = {k: v for k, v in zip(signature, param)}
             # -------------------------------------------------------------------------------------
-            # QUICK PATCH TO HANDLE ORACLE METRIC WHICH NEEDS TO BE BUILT WITH A DATASET ISTANCE
+            # QUICK PATCH TO HANDLE ORACLE METRIC WHICH NEEDS TO BE BUILT WITH A DATASET INSTANCE
             metric = config.get('metric')
             if metric is not None and isinstance(metric, Oracle):
                 dataset = config.get('dataset')
@@ -143,8 +118,15 @@ class Experiment(Cacheable):
                 # noinspection PyArgumentList
                 config['metric'] = metric.instance(dataset=dataset)
             # -------------------------------------------------------------------------------------
+            # noinspection PyArgumentList
             experiment = cls(**config)
             experiments[index] = experiment
+            if verbose:
+                print(flush=True)
+                print(f'Running Experiment {i + 1} of {total}:')
+                for key, value in experiment.configuration.items():
+                    print(f'  > {key.upper()}: {value}')
+                print(end='', flush=True)
             # check if the experiment output is already in the dictionary based on its key
             key = experiment.key
             out = results.get(key)
@@ -234,12 +216,12 @@ class Experiment(Cacheable):
                 result = input(f"\nAre you sure you want to remove {len(results) - len(output)} experiments from "
                                f"'{filename}.pkl', leaving {len(output)} experiments left? (Y/N)\n")
                 if result.lower() not in ['y', 'yes']:
-                    print(f"\nClearing procedure for file '{filename}.pkl' aborted")
+                    print(f"\nClearing procedure for file '{filename}.pkl' aborted\n")
                     break
                 else:
-                    print(f"\nClearing procedure for file '{filename}.pkl' completed")
+                    print(f"\nClearing procedure for file '{filename}.pkl' completed\n")
             else:
-                print(f"Removed {len(results) - len(output)} experiments from '{filename}.pkl ({len(output)} left)")
+                print(f"Removed {len(results) - len(output)} experiments from '{filename}.pkl ({len(output)} left)\n")
             # dump the file before writing to check if it is pickle-compliant
             dump = pickle.dumps(output)
             with open(path, 'wb') as file:

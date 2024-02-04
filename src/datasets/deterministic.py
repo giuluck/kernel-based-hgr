@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from math import pi
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,6 +34,10 @@ class Deterministic(Dataset, ABC):
     @property
     def classification(self) -> bool:
         return False
+
+    @property
+    def units(self) -> List[int]:
+        return []
 
     @property
     def continuous(self) -> bool:
