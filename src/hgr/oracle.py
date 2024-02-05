@@ -40,7 +40,7 @@ class Oracle(KernelsHGR):
             correlation, _ = pearsonr(dataset.f(a), dataset.g(b))
             return abs(float(correlation)), dict()
 
-        def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
             raise AssertionError("Oracle metric does not provide gradients")
 
     # noinspection PyMethodMayBeStatic

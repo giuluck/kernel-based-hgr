@@ -26,7 +26,7 @@ class DensityHGR(HGR):
         correlation = self(a=a, b=b).numpy(force=True).item()
         return float(correlation), dict()
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         return hgr(X=a, Y=b, density=kde)
 
 
@@ -48,7 +48,7 @@ class ChiSquare(HGR):
         correlation = self(a=a, b=b).numpy(force=True).item()
         return float(correlation), dict()
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         return chi_2(X=a, Y=b, density=kde)
 
 

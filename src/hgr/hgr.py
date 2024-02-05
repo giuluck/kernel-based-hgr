@@ -19,14 +19,15 @@ class HGR(Serializable):
         pass
 
     @abstractmethod
-    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        """Computes the correlation between two tensors <a> and <b> in a differentiable way."""
-        pass
-
-    @abstractmethod
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
         """Computes the correlation between two numpy vectors <a> and <b> and returns the dictionary along with a
         dictionary of additional results."""
+        pass
+
+    @abstractmethod
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+        """Computes the correlation between two tensors <a> and <b> in a differentiable way.
+        Additionally, kwargs are used both for additional input parameters and additional output storage."""
         pass
 
 

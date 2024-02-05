@@ -25,7 +25,7 @@ class Experiment(Cacheable):
             """Builds a new result file with the given timestamp, execution time, and other arguments.
             Moreover, it keeps a pointer to an external file containing additional results."""
             self._kwargs: Dict[str, Any] = dict(timestamp=timestamp, execution=execution, **kwargs)
-            self._external_kwargs: Optional[Dict[str, Any]] = dict() if external is None else None
+            self._external_kwargs_cache: Optional[Dict[str, Any]] = dict() if external is None else None
             self._external: Optional[str] = external
 
         def __getitem__(self, key: str) -> Any:
@@ -33,11 +33,7 @@ class Experiment(Cacheable):
             output = self._kwargs.get(key)
             if output is not None:
                 return output
-            # otherwise, load the external kwargs if necessary (i.e., the field is None)
-            # then try to look for the key in the external kwargs, and return it if found
-            if self._external_kwargs is None:
-                with importlib.resources.open_binary('experiments.results', self._external) as file:
-                    self._external_kwargs = pickle.load(file=file)
+            # otherwise, try to look for the key in the external kwargs, and return it if found
             output = self._external_kwargs.get(key)
             if output is not None:
                 return output
@@ -47,6 +43,18 @@ class Experiment(Cacheable):
         @property
         def configuration(self) -> Dict[str, Any]:
             return dict(external=self._external, **self._kwargs)
+
+        @property
+        def _external_kwargs(self) -> Dict[str, Any]:
+            """Load the external kwargs if necessary (i.e., the field is None), then returns them."""
+            if self._external_kwargs_cache is None:
+                with importlib.resources.open_binary('experiments.results', self._external) as file:
+                    self._external_kwargs_cache = pickle.load(file=file)
+            return self._external_kwargs_cache
+
+        def dictionary(self, external: bool = False):
+            """Returns all the results in form of dictionary (include external results if needed)."""
+            return {**self._kwargs, **self._external_kwargs} if external else {**self._kwargs}
 
     @property
     @abstractmethod
@@ -163,8 +171,7 @@ class Experiment(Cacheable):
     @staticmethod
     def clear_results(file: List[str],
                       dataset: Optional[Iterable[str]] = None,
-                      metric: Optional[Iterable[str]] = None,
-                      seed: Optional[Iterable[int]] = None,
+                      metric: Optional[Iterable[Optional[str]]] = None,
                       pattern: Optional[str] = None,
                       custom: Optional[Callable[[dict], bool]] = None,
                       force: bool = False):
@@ -172,7 +179,6 @@ class Experiment(Cacheable):
         pattern = None if pattern is None else re.compile(pattern)
         datasets = None if dataset is None else set(dataset)
         metrics = None if metric is None else set(metric)
-        seeds = None if seed is None else set(seed)
         # get the folder path
         with importlib.resources.files('experiments.results') as folder:
             pass
@@ -196,9 +202,6 @@ class Experiment(Cacheable):
                     output[idx] = res
                 elif metrics is not None and res['metric']['name'] not in metrics:
                     # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch metric '{res['metric']['name']}')")
-                    output[idx] = res
-                elif seeds is not None and res['seed'] not in seeds:
-                    # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch seed {res['seed']})")
                     output[idx] = res
                 elif pattern is not None and not pattern.match(idx):
                     # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch pattern)")

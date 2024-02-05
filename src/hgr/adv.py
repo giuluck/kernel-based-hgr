@@ -18,6 +18,12 @@ DEVICE: torch.DeviceObjType = torch.device(str("cuda:0") if torch.cuda.is_availa
 EPOCHS: int = 1000
 """The number of epochs used to run the adversarial networks."""
 
+PRETRAINED_EPOCHS: int = 50
+"""The number of epochs used to run the adversarial networks when they are pretrained."""
+
+EPSILON: float = 0.000000001
+"""The tolerance used to standardize the results."""
+
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class AdversarialHGR(KernelsHGR):
@@ -30,14 +36,16 @@ class AdversarialHGR(KernelsHGR):
         return dict(name=self.name)
 
     @staticmethod
-    def compute_with_networks(a: torch.Tensor, b: torch.Tensor) -> Tuple[torch.Tensor, nn.Module, nn.Module]:
+    def compute_with_networks(a: torch.Tensor,
+                              b: torch.Tensor,
+                              net_1: nn.Module,
+                              net_2: nn.Module,
+                              epochs: int) -> Tuple[torch.Tensor, nn.Module, nn.Module]:
         """Computes the HGR coefficient and returns it along with the adversarial kernel networks."""
-        net_1 = Net_HGR()
-        net_2 = Net2_HGR()
         # model_F is linked to yhat and model_G is linked to s_var
         # in order to retrieve compatible kernel functions, we pass net2 on model_F and net1 on modelG
         model = HGR_NN(model_F=net_2, model_G=net_1, device=DEVICE, display=False)
-        correlation = model(yhat=b, s_var=a, nb=EPOCHS)
+        correlation = model(yhat=b, s_var=a, nb=epochs)
         return correlation, net_1, net_2
 
     def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
@@ -48,18 +56,32 @@ class AdversarialHGR(KernelsHGR):
         return fa, gb
 
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
-        a = torch.tensor(a, dtype=torch.float)
-        b = torch.tensor(b, dtype=torch.float)
-        correlation, net_1, net_2 = AdversarialHGR.compute_with_networks(a=a, b=b)
+        # use the default adversarial networks when computing correlations for correlation experiments
+        correlation, net_1, net_2 = AdversarialHGR.compute_with_networks(
+            a=torch.tensor(a, dtype=torch.float),
+            b=torch.tensor(b, dtype=torch.float),
+            net_1=Net_HGR(),
+            net_2=Net2_HGR(),
+            epochs=EPOCHS
+        )
         correlation = correlation.numpy(force=True).item()
         return float(correlation), dict(f=net_1, g=net_2)
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         def standardize(t: torch.Tensor) -> torch.Tensor:
             t_std, t_mean = torch.std_mean(t, correction=0)
-            return (t - t_mean) / (t_std + 0.000000001)
+            return (t - t_mean) / (t_std + EPSILON)
 
-        _, net_1, net_2 = AdversarialHGR.compute_with_networks(a=a.detach(), b=b.detach())
+        # use the given networks and number of epochs when the metric is used as penalizer for a neural network
+        _, net_1, net_2 = self.compute_with_networks(
+            a=a.detach(),
+            b=b.detach(),
+            net_1=kwargs['net_1'],
+            net_2=kwargs['net_2'],
+            epochs=kwargs['epochs']
+        )
+        # eventually, replace the number of epochs to the pretrained epochs for the next training step
+        kwargs['epochs'] = PRETRAINED_EPOCHS
         f = net_1(a.reshape(-1, 1))
         g = net_2(b.reshape(-1, 1))
         return torch.mean(standardize(f) * standardize(g))

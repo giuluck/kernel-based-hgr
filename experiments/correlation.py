@@ -28,6 +28,7 @@ PALETTE: List[str] = [
     '#e41a1c',
     '#dede00'
 ]
+"""The color palette for plotting data."""
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
@@ -99,15 +100,15 @@ class CorrelationExperiment(Experiment):
             dataset={dataset.key: dataset for dataset in datasets},
             metric={(da, db): DoubleKernelHGR(degree_a=da, degree_b=db) for da in degrees_a for db in degrees_b}
         )
+        # plot results
+        sns.set_context('notebook')
+        sns.set_style('whitegrid')
         for dataset in datasets:
             # build results
             results = np.zeros((len(degrees_a), len(degrees_b)))
             for i, da in enumerate(degrees_a):
                 for j, db in enumerate(degrees_b):
                     results[i, j] = experiments[(dataset.key, (da, db))].result['correlation']
-            # plot results
-            sns.set_context('notebook')
-            sns.set_style('whitegrid')
             fig = plt.figure(figsize=(12, 9), tight_layout=True)
             ax = fig.gca()
             col = ax.imshow(results.transpose()[::-1], cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
@@ -134,6 +135,7 @@ class CorrelationExperiment(Experiment):
                 info = ', '.join({f'{key}={value}' for key, value in config.items()})
                 fig.suptitle(f'Monotonicity in {name}({info})')
                 fig.show()
+            plt.close(fig)
 
     @staticmethod
     def correlations(datasets: Dict[str, Callable[[float, int], Deterministic]],
@@ -265,6 +267,8 @@ class CorrelationExperiment(Experiment):
             for key, figure in fig.items():
                 figure.suptitle(titles[key])
                 figure.show()
+        for figure in fig.values():
+            plt.close(figure)
 
     @staticmethod
     def kernels(datasets: Iterable[Callable[[float], Deterministic]],
@@ -306,6 +310,8 @@ class CorrelationExperiment(Experiment):
                 fa[name], gb[name] = fa_current, gb_current
             fa, gb = pd.DataFrame(fa).set_index('index'), pd.DataFrame(gb).set_index('index')
             # plot kernels
+            sns.set_context('notebook')
+            sns.set_style('white')
             for data, kernel, labels in zip([fa, gb], ['A', 'B'], [('a', 'f(a)'), ('b', 'g(b)')]):
                 ax = axes[kernel]
                 sns.lineplot(
@@ -371,3 +377,4 @@ class CorrelationExperiment(Experiment):
                 info = ', '.join({f'{key}={value}' for key, value in config.items()})
                 fig.suptitle(f'Kernels for {name}({info})')
                 fig.show()
+            plt.close(fig)

@@ -30,13 +30,6 @@ parser.add_argument(
     help='the name of the metric (or list of such) to clear'
 )
 parser.add_argument(
-    '-s',
-    '--seed',
-    type=int,
-    nargs='*',
-    help='the value of the seed (or list of such) to clear'
-)
-parser.add_argument(
     '-p',
     '--pattern',
     type=str,

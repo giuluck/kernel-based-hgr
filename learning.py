@@ -16,8 +16,8 @@ datasets = dict(
     adult=Adult(continuous=True)
 )
 
-# list all the valid penalties
-penalties = dict(
+# list all the valid metrics
+metrics = dict(
     dkn=('HGR-KB', DoubleKernelHGR()),
     skn=('HGR-SK', SingleKernelHGR()),
     adv=('HGR-NN', AdversarialHGR())
@@ -25,7 +25,7 @@ penalties = dict(
 
 
 # build argument parser
-parser = argparse.ArgumentParser(description='Train multiple neural networks using different HGR penalties')
+parser = argparse.ArgumentParser(description='Train multiple neural networks using different HGR metrics as penalizers')
 parser.add_argument(
     '-d',
     '--datasets',
@@ -36,13 +36,13 @@ parser.add_argument(
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(
-    '-p',
-    '--penalties',
+    '-m',
+    '--metrics',
     type=str,
     nargs='*',
-    choices=list(penalties),
-    default=['dkn', 'skn'],
-    help='the penalties used to compute the correlations'
+    choices=list(metrics),
+    default=['unc', 'dkn', 'skn', 'adv'],
+    help='the metrics used as penalties'
 )
 parser.add_argument(
     '-a',
@@ -57,16 +57,24 @@ parser.add_argument(
     help='whether to train the networks full batch or with mini batches'
 )
 parser.add_argument(
-    '--warm-start',
-    action='store_true',
-    help='whether to train the networks starting from a pretrained non-constrained network or from scratch'
-)
-parser.add_argument(
     '-e',
     '--entity',
     type=str,
     nargs='?',
     help='the Weights & Biases entity, or None for no Weights & Biases logging'
+)
+parser.add_argument(
+    '-f',
+    '--formats',
+    type=str,
+    nargs='*',
+    default=['png'],
+    help='the extensions of the files to save'
+)
+parser.add_argument(
+    '--plot',
+    action='store_true',
+    help='whether to plot the results'
 )
 
 # parse arguments, build experiments, then export the results
@@ -76,5 +84,5 @@ for k, v in args.items():
     print('  >', k, '-->', v)
 print()
 args['datasets'] = {k: datasets[k] for k in args['datasets']}
-args['penalties'] = {k: v for k, v in [penalties[p] for p in args['penalties']]}
+args['metrics'] = {k: v for k, v in [metrics[m] for m in args['metrics']]}
 LearningExperiment.learning(**args)

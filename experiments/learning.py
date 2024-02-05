@@ -2,20 +2,50 @@ import importlib.resources
 import pickle
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List, Iterable
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
+import seaborn as sns
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.learning import MultiLayerPerceptron, Data, Callback
+from src.learning import MultiLayerPerceptron, Data, Callback, Loss, Accuracy
+
+PALETTE: List[str] = [
+    '#000000',
+    '#377eb8',
+    '#ff7f00',
+    '#4daf4a',
+    '#f781bf',
+    '#a65628',
+    '#984ea3',
+    '#999999',
+    '#e41a1c',
+    '#dede00'
+]
+"""The color palette for plotting data."""
+
+EXTERNAL: List[str] = [
+    'train_predictions',
+    'train_inputs',
+    'train_target',
+    'val_predictions',
+    'val_inputs',
+    'val_target',
+    'model'
+]
+"""The names of the results to be stored in the external file."""
 
 SEED: int = 0
 """The random seed used in the experiment."""
 
-FOLDS: int = 5
+FOLDS: int = 1  # TODO: replace with 5
 """The number of folds for k-fold cross-validation."""
 
 MINI_BATCH: int = 128
@@ -39,14 +69,11 @@ class LearningExperiment(Experiment):
     fold: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The fold that is used for training the model."""
 
-    penalty: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The HGR metric used as penalizer."""
+    metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The metric to be used as penalty, or None for unconstrained model."""
 
     _alpha: Optional[float] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The alpha value for the penalizer."""
-
-    _warm_start: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """Whether to start from a pretrained non-constrained network."""
 
     full_batch: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """Whether to train the model full batch or with mini batches."""
@@ -68,31 +95,9 @@ class LearningExperiment(Experiment):
             units=[len(self.dataset.input_names), *self.dataset.units],
             classification=self.dataset.classification,
             feature=self.dataset.excluded_index,
-            penalty=self.penalty,
+            metric=self.metric,
             alpha=self.alpha
         )
-        # if warm start is true, retrieve the pretrained unconstrained model
-        if self.warm_start:
-            # build the pretrained experiment by considering penalty = None, alpha = None, warm_start = False
-            pretrained = LearningExperiment(
-                dataset=self.dataset,
-                fold=self.fold,
-                penalty=None,
-                _alpha=None,
-                _warm_start=False,
-                full_batch=self.full_batch,
-                entity=self.entity
-            )
-            # check if the pretrained experiment was already run and the external file is in the results package
-            # if so, load the results, otherwise compute them
-            with importlib.resources.path('experiments.results', f'{pretrained.key}.pkl') as path:
-                if path.exists():
-                    with open(path, 'rb') as file:
-                        result = pickle.load(file=file)
-                else:
-                    result = pretrained.result
-            # load the last state of the pretrained model as initial state for this model
-            model.load_state_dict(result['model'][epochs - 1].state_dict())
         # build trainer and callback
         callback = Callback(experiment=self)
         trainer = pl.Trainer(
@@ -114,23 +119,22 @@ class LearningExperiment(Experiment):
             val_dataloaders=DataLoader(val_data, batch_size=len(val), num_workers=4, persistent_workers=True)
         )
         gap = time.time() - start
-        # store external results
+        # store internal and external results
+        int_results, ext_results = {}, {}
+        for key, value in callback.results.items():
+            structure = int_results if key in EXTERNAL else ext_results
+            structure[key] = value
         with importlib.resources.path('experiments.results', external) as path:
             assert not path.exists(), f"File '{self.key}' is already present in package 'experiments.results'"
         with open(path, 'wb') as file:
-            pickle.dump(callback.results, file=file)
+            pickle.dump(ext_results, file=file)
         # return experiments
-        return Experiment.Result(timestamp=start, execution=gap, external=external)
+        return Experiment.Result(timestamp=start, execution=gap, external=external, **int_results)
 
     @property
     def alpha(self) -> Optional[float]:
         """The alpha value for the penalizer (defaults to None when no penalty is used)."""
-        return None if self.penalty is None else self._alpha
-
-    @property
-    def warm_start(self) -> Optional[float]:
-        """Whether to start from a pretrained non-constrained network (defaults to False when no penalty is used)."""
-        return False if self.penalty is None else self._warm_start
+        return None if self.metric == 'unc' else self._alpha
 
     @property
     def name(self) -> str:
@@ -142,34 +146,90 @@ class LearningExperiment(Experiment):
             experiment=self.name,
             dataset=self.dataset.configuration,
             fold=self.fold,
-            penalty=None if self.penalty is None else self.penalty.configuration,
+            metric={'name': 'unconstrained'} if self.metric is None else self.metric.configuration,
             alpha=self.alpha,
-            full_batch=self.full_batch,
-            warm_start=self.warm_start
+            full_batch=self.full_batch
         )
 
     @property
     def key(self) -> str:
-        penalty = None if self.penalty is None else self.penalty.key
-        return f'{self.name}_{self.dataset.key}_{self.fold}_{penalty}_{self.alpha}_{self.full_batch}_{self.warm_start}'
+        metric = None if self.metric is None else self.metric.key
+        return f'{self.name}_{self.dataset.key}_{metric}_{self.alpha}_{self.full_batch}_{self.fold}'
 
     @staticmethod
     def learning(datasets: Dict[str, Dataset],
-                 penalties: Dict[str, HGR],
+                 metrics: Dict[str, HGR],
                  alpha: Optional[float] = None,
                  full_batch: bool = True,
-                 warm_start: bool = False,
-                 entity: Optional[str] = None):
-        penalties = {'UNC': None, **penalties}
-        LearningExperiment.doe(
+                 entity: Optional[str] = None,
+                 formats: Iterable[str] = ('png',),
+                 plot: bool = False):
+        # run experiments
+        metrics = {'UNC': None, **metrics}
+        experiments = LearningExperiment.doe(
             file_name='learning',
             save_time=0,
             verbose=True,
             dataset=datasets,
-            penalty=penalties,
+            metric=metrics,
             fold=list(range(FOLDS)),
             _alpha=alpha,
-            _warm_start=warm_start,
             full_batch=full_batch,
             entity=entity
         )
+        # get results
+        results = {dataset: [] for dataset in datasets.keys()}
+        for (dataset, metric, fold), experiment in tqdm(experiments.items(), desc='Computing Metrics'):
+            exp = experiment.result
+            # retrieve input data
+            data = datasets[dataset]
+            xtr = exp['train_inputs'].numpy(force=True)
+            ytr = exp['train_target'].numpy(force=True).flatten()
+            xvl = exp['val_inputs'].numpy(force=True)
+            yvl = exp['val_target'].numpy(force=True).flatten()
+            # compute metrics for each epoch
+            kpis = [
+                Loss(classification=data.classification),
+                Accuracy(classification=data.classification)
+            ]
+            res = results[dataset]
+            for epoch in range(exp['epochs']):
+                info = dict(dataset=dataset, metric=metric, fold=fold, epoch=epoch)
+                ptr = exp['train_predictions'][epoch].numpy(force=True).flatten()
+                pvl = exp['val_predictions'][epoch].numpy(force=True).flatten()
+                # res.append({**info, 'kpi': 'alpha', 'split': 'Learning', 'value': exp['alpha'][epoch].numpy().item()})
+                # res.append({**info, 'kpi': 'time', 'split': 'Learning', 'value': exp['time'][epoch]})
+                for kpi in kpis:
+                    res.append({**info, 'kpi': kpi.name, 'split': 'Train', 'value': kpi(x=xtr, y=ytr, p=ptr)})
+                    res.append({**info, 'kpi': kpi.name, 'split': 'Val', 'value': kpi(x=xvl, y=yvl, p=pvl)})
+        # plot results
+        sns.set_context('notebook')
+        sns.set_style('whitegrid')
+        for dataset, group in results.items():
+            group = pd.DataFrame(group)
+            kpis = group['kpi'].unique()
+            fig, axes = plt.subplots(2, len(kpis), figsize=(5 * len(kpis), 8), tight_layout=True)
+            for i, split in enumerate(['Train', 'Val']):
+                for j, kpi in enumerate(kpis):
+                    sns.lineplot(
+                        data=group[np.logical_and(group['split'] == split, group['kpi'] == kpi)],
+                        x='epoch',
+                        y='value',
+                        hue='metric',
+                        style='metric',
+                        estimator='mean',
+                        errorbar='sd',
+                        palette=PALETTE[:len(metrics)],
+                        linewidth=2,
+                        ax=axes[i, j]
+                    )
+                    axes[i, j].set_ylabel(f'{split} {kpi}')
+            # store, print, and plot if necessary
+            for extension in formats:
+                name = f'learning_{dataset}_{full_batch}.{extension}'
+                with importlib.resources.path('experiments.exports', name) as file:
+                    fig.savefig(file, bbox_inches='tight')
+            if plot:
+                fig.suptitle(f"Learning History for {dataset.title()} ({'Full' if full_batch else 'Mini'} Batch)")
+                fig.show()
+            plt.close(fig)
