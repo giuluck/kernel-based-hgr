@@ -51,8 +51,9 @@ class AdversarialHGR(KernelsHGR):
     def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
         a = torch.tensor(a, dtype=torch.float32).reshape((-1, 1))
         b = torch.tensor(b, dtype=torch.float32).reshape((-1, 1))
-        fa = experiment.result['f'](a).numpy(force=True).flatten()
-        gb = experiment.result['g'](b).numpy(force=True).flatten()
+        result = experiment.result(external=True)
+        fa = result['f'](a).numpy(force=True).flatten()
+        gb = result['g'](b).numpy(force=True).flatten()
         return fa, gb
 
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:

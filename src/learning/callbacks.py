@@ -14,6 +14,14 @@ class ResultsCallback(pl.Callback):
         self._epoch_cache: List[Dict[str, Any]] = []
         self.results: Dict[str, Any] = {}
 
+    def on_train_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        # include general information to the results
+        self.results['train_inputs'] = trainer.train_dataloader.dataset.x
+        self.results['train_target'] = trainer.train_dataloader.dataset.y
+        self.results['val_inputs'] = trainer.val_dataloaders.dataset.x
+        self.results['val_target'] = trainer.val_dataloaders.dataset.y
+        self.results['epochs'] = trainer.max_epochs
+
     def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         self._time = time.time()
 
@@ -40,15 +48,6 @@ class ResultsCallback(pl.Callback):
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         self._log(val_predictions=pl_module(trainer.val_dataloaders.dataset.x))
-
-    def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        # include general information to the results
-        self.results['train_inputs'] = trainer.train_dataloader.dataset.x
-        self.results['train_target'] = trainer.train_dataloader.dataset.y
-        self.results['val_inputs'] = trainer.val_dataloaders.dataset.x
-        self.results['val_target'] = trainer.val_dataloaders.dataset.y
-        self.results['epochs'] = trainer.max_epochs
-        self.results['model'] = pl_module
 
     def _log(self, **kwargs):
         # compute mean of cached outputs and use it to build a dictionary with other results

@@ -19,10 +19,6 @@ class Adult(RealDataset):
         return data
 
     @property
-    def configuration(self) -> Dict[str, Any]:
-        return dict(name=self.name)
-
-    @property
     def name(self) -> str:
         return 'adult'
 

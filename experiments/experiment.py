@@ -25,7 +25,6 @@ class Experiment(Cacheable):
             """Builds a new result file with the given timestamp, execution time, and other arguments.
             Moreover, it keeps a pointer to an external file containing additional results."""
             self._kwargs: Dict[str, Any] = dict(timestamp=timestamp, execution=execution, **kwargs)
-            self._external_kwargs_cache: Optional[Dict[str, Any]] = dict() if external is None else None
             self._external: Optional[str] = external
 
         def __getitem__(self, key: str) -> Any:
@@ -40,21 +39,21 @@ class Experiment(Cacheable):
             # if the value was not found neither in the default nor in the external arguments, raise an exception
             raise KeyError(f"Key '{key}' is not defined for experiment {self}")
 
+        def __call__(self, external: bool = False):
+            """Returns all the results in form of dictionary (include external results if needed)."""
+            return {**self._kwargs, **self._external_kwargs} if external else {**self._kwargs}
+
         @property
         def configuration(self) -> Dict[str, Any]:
             return dict(external=self._external, **self._kwargs)
 
         @property
         def _external_kwargs(self) -> Dict[str, Any]:
-            """Load the external kwargs if necessary (i.e., the field is None), then returns them."""
-            if self._external_kwargs_cache is None:
-                with importlib.resources.open_binary('experiments.results', self._external) as file:
-                    self._external_kwargs_cache = pickle.load(file=file)
-            return self._external_kwargs_cache
-
-        def dictionary(self, external: bool = False):
-            """Returns all the results in form of dictionary (include external results if needed)."""
-            return {**self._kwargs, **self._external_kwargs} if external else {**self._kwargs}
+            """The external kwargs."""
+            if self._external is None:
+                return dict()
+            with importlib.resources.open_binary('experiments.results', self._external) as file:
+                return pickle.load(file=file)
 
     @property
     @abstractmethod

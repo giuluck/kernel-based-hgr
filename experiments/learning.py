@@ -2,22 +2,22 @@ import importlib.resources
 import pickle
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any, List, Iterable
+from typing import Dict, Optional, Any, List, Iterable, Callable, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
+import seaborn as sns
 import wandb
 from pytorch_lightning.loggers import WandbLogger
-import seaborn as sns
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.learning import MultiLayerPerceptron, Data, ResultsCallback, ProgressCallback, Loss, Accuracy
+from src.learning import MultiLayerPerceptron, Data, ResultsCallback, ProgressCallback, Loss, Accuracy, Metric
 
 PALETTE: List[str] = [
     '#000000',
@@ -42,8 +42,7 @@ EXTERNAL: List[str] = [
     'train_target',
     'val_predictions',
     'val_inputs',
-    'val_target',
-    'model'
+    'val_target'
 ]
 """The names of the results to be stored in the external file."""
 
@@ -183,19 +182,29 @@ class LearningExperiment(Experiment):
                 f'{self.fold}_{self.folds}')
 
     @staticmethod
-    def calibration(datasets: Dict[str, Dataset],
+    def calibration(datasets: Dict[str, Callable[[int], Dataset]],
+                    features: Iterable[int],
                     batches: Iterable[Optional[int]] = (None, 128),
-                    units: Iterable[Iterable[int]] = ((256,), (32,) * 2, (256,) * 2, (32,) * 3),
+                    units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
                     log: bool = False,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
+        def configuration(key0, bt, un):
+            ds, ft = key0
+            classification = datasets[ds](ft).classification
+            return dict(dataset=ds, feature=ft, batch=bt, units=un), [
+                Loss(classification=classification),
+                Accuracy(classification=classification)
+            ]
+
+        units = [list(u) for u in units]
         experiments = LearningExperiment.doe(
             file_name='learning',
             save_time=0,
             verbose=True,
-            dataset=datasets,
-            batch=list(batches),
-            units=list(units),
+            dataset={(k, f): ds(f) for k, ds in datasets.items() for f in features},
+            batch={str(b): b for b in batches},
+            units={str(u): u for u in units},
             fold=0,
             folds=1,
             epochs=300,
@@ -203,6 +212,27 @@ class LearningExperiment(Experiment):
             alpha=None,
             log=log
         )
+        # get results and plot
+        results = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
+        sns.set_context('notebook')
+        sns.set_style('whitegrid')
+        for dataset in datasets.keys():
+            for unit in units:
+                fig = LearningExperiment._plot(
+                    group=results[np.logical_and(results['dataset'] == dataset, results['units'] == str(unit))],
+                    hue='feature',
+                    style='batch',
+                    palette=PALETTE[1:len(features) + 1]
+                )
+                # store, print, and plot if necessary
+                for extension in formats:
+                    name = f'calibration_{dataset}_{unit}.{extension}'
+                    with importlib.resources.path('experiments.exports', name) as file:
+                        fig.savefig(file, bbox_inches='tight')
+                if plot:
+                    fig.suptitle(f"Calibration Results for {dataset.title()} with Units {unit}")
+                    fig.show()
+                plt.close(fig)
 
     @staticmethod
     def history(datasets: Dict[str, Dataset],
@@ -213,6 +243,13 @@ class LearningExperiment(Experiment):
                 log: bool = False,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
+        def configuration(ds, mt, fl):
+            classification = datasets[ds].classification
+            return dict(dataset=ds, metric=mt, fold=fl), [
+                Loss(classification=classification),
+                Accuracy(classification=classification)
+            ]
+
         # run experiments
         metrics = {'UNC': None, **metrics}
         epochs, batch = (FULL_EPOCHS, -1) if full_batch else (MINI_EPOCHS, MINI_BATCH)
@@ -230,61 +267,100 @@ class LearningExperiment(Experiment):
             batch=batch,
             log=log
         )
-        # get results
-        results = {dataset: [] for dataset in datasets.keys()}
-        for (dataset, metric, fold), experiment in tqdm(experiments.items(), desc='Computing Metrics'):
-            exp = experiment.result
-            # retrieve input data
-            data = datasets[dataset]
-            xtr = exp['train_inputs'].numpy(force=True)
-            ytr = exp['train_target'].numpy(force=True).flatten()
-            xvl = exp['val_inputs'].numpy(force=True)
-            yvl = exp['val_target'].numpy(force=True).flatten()
-            # compute metrics for each epoch
-            kpis = [
-                Loss(classification=data.classification),
-                Accuracy(classification=data.classification)
-            ]
-            res = results[dataset]
-            for epoch in range(exp['epochs']):
-                info = dict(dataset=dataset, metric=metric, fold=fold, epoch=epoch)
-                ptr = exp['train_predictions'][epoch].numpy(force=True).flatten()
-                pvl = exp['val_predictions'][epoch].numpy(force=True).flatten()
-                # res.append({**info, 'kpi': 'alpha', 'split': 'Learning', 'value': exp['alpha'][epoch].numpy().item()})
-                # res.append({**info, 'kpi': 'time', 'split': 'Learning', 'value': exp['time'][epoch]})
-                for kpi in kpis:
-                    res.append({**info, 'kpi': kpi.name, 'split': 'Train', 'value': kpi(x=xtr, y=ytr, p=ptr)})
-                    res.append({**info, 'kpi': kpi.name, 'split': 'Val', 'value': kpi(x=xvl, y=yvl, p=pvl)})
-        # plot results
+        # get and plot metric results
+        results = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
         sns.set_context('notebook')
         sns.set_style('whitegrid')
-        for dataset, group in results.items():
-            group = pd.DataFrame(group)
-            kpis = group['kpi'].unique()
-            col = len(kpis)
-            fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
-            for i, split in enumerate(['Train', 'Val']):
-                for j, kpi in enumerate(kpis):
-                    sns.lineplot(
-                        data=group[np.logical_and(group['split'] == split, group['kpi'] == kpi)],
-                        x='epoch',
-                        y='value',
-                        hue='metric',
-                        style='metric',
-                        estimator='mean',
-                        errorbar='sd',
-                        palette=PALETTE[:len(metrics)],
-                        linewidth=2,
-                        ax=axes[i, j]
-                    )
-                    axes[i, j].set_ylabel(f'{split} {kpi}')
-                    axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
+        for dataset in datasets.keys():
+            fig = LearningExperiment._plot(
+                group=results[results['dataset'] == dataset],
+                hue='metrics',
+                style='metrics',
+                palette=PALETTE[:len(metrics)]
+            )
             # store, print, and plot if necessary
             for extension in formats:
-                name = f'learning_{dataset}_{full_batch}.{extension}'
+                name = f'history_{dataset}_{full_batch}.{extension}'
                 with importlib.resources.path('experiments.exports', name) as file:
                     fig.savefig(file, bbox_inches='tight')
             if plot:
                 fig.suptitle(f"Learning History for {dataset.title()} ({'Full' if full_batch else 'Mini'} Batch)")
                 fig.show()
             plt.close(fig)
+        # get and plot history results
+        history = []
+        for index, experiment in experiments.items():
+            info, _ = configuration(*index)
+            for epoch in range(experiment.result['epochs']):
+                history.append({**info, 'kpi': 'alpha', 'value': experiment.result['alpha'][epoch]})
+                history.append({**info, 'kpi': 'time', 'value': experiment.result['time'][epoch]})
+        history = pd.DataFrame(history)
+        row = len(datasets)
+        fig, axes = plt.subplots(row, 2, figsize=(10, 4 * row), sharex='all', sharey=None, tight_layout=True)
+        for i, dataset in enumerate(datasets.keys()):
+            for j, kpi in enumerate(['alpha', 'time']):
+                sns.lineplot(
+                    data=history[np.logical_and(history['dataset'] == dataset, history['kpi'] == kpi)],
+                    x='epoch',
+                    y='value',
+                    estimator='mean',
+                    errorbar='sd',
+                    linewidth=2,
+                    hue='metrics',
+                    style='metrics',
+                    palette=PALETTE[:len(metrics)],
+                    ax=axes[i, j]
+                )
+                axes[i, j].set_ylabel(f'{dataset} {kpi}')
+        # store, print, and plot if necessary
+        for extension in formats:
+            name = f'history_outputs_{full_batch}.{extension}'
+            with importlib.resources.path('experiments.exports', name) as file:
+                fig.savefig(file, bbox_inches='tight')
+        if plot:
+            fig.suptitle(f"Learning History Outputs for ({'Full' if full_batch else 'Mini'} Batch)")
+            fig.show()
+        plt.close(fig)
+
+    @staticmethod
+    def _metrics(experiments: Dict[Any, 'LearningExperiment'],
+                 configuration: Callable[[tuple], Tuple[Dict[str, Any], Iterable[Metric]]]) -> pd.DataFrame:
+        results = []
+        for index, experiment in tqdm(experiments.items(), desc='Computing Metrics'):
+            exp = experiment.result(external=True)
+            # retrieve input data
+            xtr = exp['train_inputs'].numpy(force=True)
+            ytr = exp['train_target'].numpy(force=True).flatten()
+            xvl = exp['val_inputs'].numpy(force=True)
+            yvl = exp['val_target'].numpy(force=True).flatten()
+            # compute metrics for each epoch
+            info, metrics = configuration(*index)
+            for epoch in range(exp['epochs']):
+                ptr = exp['train_predictions'][epoch].numpy(force=True).flatten()
+                pvl = exp['val_predictions'][epoch].numpy(force=True).flatten()
+                info['epoch'] = epoch
+                for mtr in metrics:
+                    results.append({**info, 'kpi': mtr.name, 'split': 'Train', 'value': mtr(x=xtr, y=ytr, p=ptr)})
+                    results.append({**info, 'kpi': mtr.name, 'split': 'Val', 'value': mtr(x=xvl, y=yvl, p=pvl)})
+        return pd.DataFrame(results)
+
+    @staticmethod
+    def _plot(group: pd.DataFrame, **kwargs: Any) -> plt.Figure:
+        kpis = group['kpi'].unique()
+        col = len(kpis)
+        fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
+        for i, split in enumerate(['Train', 'Val']):
+            for j, kpi in enumerate(kpis):
+                sns.lineplot(
+                    data=group[np.logical_and(group['split'] == split, group['kpi'] == kpi)],
+                    x='epoch',
+                    y='value',
+                    estimator='mean',
+                    errorbar='sd',
+                    linewidth=2,
+                    ax=axes[i, j],
+                    **kwargs
+                )
+                axes[i, j].set_ylabel(f'{split} {kpi}')
+                axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
+        return fig
