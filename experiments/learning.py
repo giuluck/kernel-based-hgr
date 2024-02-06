@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
+import wandb
 from pytorch_lightning.loggers import WandbLogger
 import seaborn as sns
 from torch.utils.data import DataLoader
@@ -88,7 +89,7 @@ class LearningExperiment(Experiment):
     epochs: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of training epochs."""
 
-    wandb: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    log: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """Whether to log on Weights & Biases."""
 
     def __post_init__(self):
@@ -112,7 +113,7 @@ class LearningExperiment(Experiment):
         )
         # build trainer and callback
         callback = ResultsCallback()
-        if self.wandb:
+        if self.log:
             logger = WandbLogger(
                 project=PROJECT,
                 name=self.key,
@@ -143,6 +144,8 @@ class LearningExperiment(Experiment):
             val_dataloaders=DataLoader(val_data, batch_size=len(val), num_workers=4, persistent_workers=True)
         )
         gap = time.time() - start
+        if self.log:
+            wandb.finish()
         # store internal and external results
         int_results, ext_results = {}, {}
         for key, value in callback.results.items():
@@ -183,7 +186,7 @@ class LearningExperiment(Experiment):
     def calibration(datasets: Dict[str, Dataset],
                     batches: Iterable[Optional[int]] = (None, 128),
                     units: Iterable[Iterable[int]] = ((256,), (32,) * 2, (256,) * 2, (32,) * 3),
-                    wandb: bool = False,
+                    log: bool = False,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
         experiments = LearningExperiment.doe(
@@ -198,7 +201,7 @@ class LearningExperiment(Experiment):
             epochs=300,
             metric=None,
             alpha=None,
-            wandb=wandb
+            log=log
         )
 
     @staticmethod
@@ -207,7 +210,7 @@ class LearningExperiment(Experiment):
                 alpha: Optional[float] = None,
                 full_batch: bool = True,
                 folds: int = 3,
-                wandb: bool = False,
+                log: bool = False,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
         # run experiments
@@ -225,7 +228,7 @@ class LearningExperiment(Experiment):
             units=None,
             epochs=epochs,
             batch=batch,
-            wandb=wandb
+            log=log
         )
         # get results
         results = {dataset: [] for dataset in datasets.keys()}

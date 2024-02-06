@@ -67,7 +67,7 @@ parser.add_argument(
     help='whether to train the networks full batch or with mini batches'
 )
 parser.add_argument(
-    '--wandb',
+    '--log',
     action='store_true',
     help='whether to log on Weights & Biases'
 )
