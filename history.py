@@ -1,9 +1,13 @@
 import argparse
 import logging
+import os
 
 from experiments import LearningExperiment
 from src.datasets import Communities, Adult
 from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR
+
+os.environ['WANDB_SILENT'] = 'true'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytorch_lightning.accelerators.cuda"]:
     log = logging.getLogger(name)
@@ -52,16 +56,20 @@ parser.add_argument(
     help='the alpha value used in the experiments'
 )
 parser.add_argument(
+    '-f',
+    type=int,
+    default=3,
+    help='the number of folds to be used for cross-validation'
+)
+parser.add_argument(
     '--full-batch',
     action='store_true',
     help='whether to train the networks full batch or with mini batches'
 )
 parser.add_argument(
-    '-e',
-    '--entity',
-    type=str,
-    nargs='?',
-    help='the Weights & Biases entity, or None for no Weights & Biases logging'
+    '--wandb',
+    action='store_true',
+    help='whether to log on Weights & Biases'
 )
 parser.add_argument(
     '-f',

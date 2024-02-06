@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
 import seaborn as sns
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -15,7 +16,7 @@ from tqdm import tqdm
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.learning import MultiLayerPerceptron, Data, Callback, Loss, Accuracy
+from src.learning import MultiLayerPerceptron, Data, ResultsCallback, ProgressCallback, Loss, Accuracy
 
 PALETTE: List[str] = [
     '#000000',
@@ -31,6 +32,9 @@ PALETTE: List[str] = [
 ]
 """The color palette for plotting data."""
 
+PROJECT: str = 'kernel-based-hgr'
+"""The name of the wandb project."""
+
 EXTERNAL: List[str] = [
     'train_predictions',
     'train_inputs',
@@ -45,16 +49,13 @@ EXTERNAL: List[str] = [
 SEED: int = 0
 """The random seed used in the experiment."""
 
-FOLDS: int = 5
-"""The number of folds for k-fold cross-validation."""
-
 MINI_BATCH: int = 128
 """The size of a mini batch."""
 
-MINI_EPOCHS: int = 200
+MINI_EPOCHS: int = 100
 """The number of epochs used during training with mini batches."""
 
-FULL_EPOCHS: int = 500
+FULL_EPOCHS: int = 300
 """The number of epochs used during training full batch."""
 
 
@@ -68,6 +69,9 @@ class LearningExperiment(Experiment):
 
     fold: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The fold that is used for training the model."""
+
+    folds: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The number of folds for k-fold cross-validation."""
 
     metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The metric to be used as penalty, or None for unconstrained model."""
@@ -84,8 +88,8 @@ class LearningExperiment(Experiment):
     epochs: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of training epochs."""
 
-    entity: Optional[str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """Either the Weights & Biases entity, or None for no logging."""
+    wandb: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """Whether to log on Weights & Biases."""
 
     def __post_init__(self):
         assert self.metric is not None or self.alpha is None, "If metric=None, alpha must be None as well."
@@ -94,7 +98,7 @@ class LearningExperiment(Experiment):
         pl.seed_everything(SEED, workers=True)
         external = f'{self.key}.pkl'
         # retrieve train and validation data from splits and set parameters
-        trn, val = self.dataset.data(folds=FOLDS, seed=SEED)[self.fold]
+        trn, val = self.dataset.data(folds=self.folds, seed=SEED)[self.fold]
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
         val_data = Data(x=val[self.dataset.input_names], y=val[self.dataset.target_name])
         # build model
@@ -107,23 +111,35 @@ class LearningExperiment(Experiment):
             alpha=self.alpha
         )
         # build trainer and callback
-        callback = Callback(experiment=self)
+        callback = ResultsCallback()
+        if self.wandb:
+            logger = WandbLogger(
+                project=PROJECT,
+                name=self.key,
+                log_model='all'
+            )
+            logger.experiment.config.update(self.configuration)
+        else:
+            logger = None
         trainer = pl.Trainer(
+            deterministic=True,
             min_epochs=self.epochs,
             max_epochs=self.epochs,
-            check_val_every_n_epoch=self.epochs + 1,
-            callbacks=[callback],
-            deterministic=True,
+            callbacks=[callback, ProgressCallback()],
+            logger=logger,
+            check_val_every_n_epoch=1,
+            num_sanity_val_steps=0,
+            log_every_n_steps=1,
             enable_progress_bar=True,
             enable_checkpointing=False,
-            enable_model_summary=False,
-            logger=False
+            enable_model_summary=False
         )
         # run fitting
         start = time.time()
+        batch_size = len(trn) if self.batch is None else self.batch
         trainer.fit(
             model=model,
-            train_dataloaders=DataLoader(trn_data, batch_size=self.batch, num_workers=4, persistent_workers=True),
+            train_dataloaders=DataLoader(trn_data, batch_size=batch_size, num_workers=4, persistent_workers=True),
             val_dataloaders=DataLoader(val_data, batch_size=len(val), num_workers=4, persistent_workers=True)
         )
         gap = time.time() - start
@@ -149,6 +165,7 @@ class LearningExperiment(Experiment):
             experiment=self.name,
             dataset=self.dataset.configuration,
             fold=self.fold,
+            folds=self.folds,
             metric={'name': 'unconstrained'} if self.metric is None else self.metric.configuration,
             alpha=self.alpha,
             units=self.units,
@@ -158,14 +175,15 @@ class LearningExperiment(Experiment):
 
     @property
     def key(self) -> str:
-        m = None if self.metric is None else self.metric.key
-        return f'{self.name}_{self.dataset.key}_{m}_{self.alpha}_{self.units}_{self.batch}_{self.epochs}_{self.fold}'
+        metric = None if self.metric is None else self.metric.key
+        return (f'{self.name}_{self.dataset.key}_{metric}_{self.alpha}_{self.units}_{self.batch}_{self.epochs}_'
+                f'{self.fold}_{self.folds}')
 
     @staticmethod
     def calibration(datasets: Dict[str, Dataset],
                     batches: Iterable[Optional[int]] = (None, 128),
-                    units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
-                    entity: Optional[str] = None,
+                    units: Iterable[Iterable[int]] = ((256,), (32,) * 2, (256,) * 2, (32,) * 3),
+                    wandb: bool = False,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
         experiments = LearningExperiment.doe(
@@ -173,13 +191,14 @@ class LearningExperiment(Experiment):
             save_time=0,
             verbose=True,
             dataset=datasets,
-            fold=list(range(FOLDS)),
-            batch=batches,
-            units=units,
-            epochs=500,
+            batch=list(batches),
+            units=list(units),
+            fold=0,
+            folds=1,
+            epochs=300,
             metric=None,
             alpha=None,
-            entity=entity
+            wandb=wandb
         )
 
     @staticmethod
@@ -187,7 +206,8 @@ class LearningExperiment(Experiment):
                 metrics: Dict[str, HGR],
                 alpha: Optional[float] = None,
                 full_batch: bool = True,
-                entity: Optional[str] = None,
+                folds: int = 3,
+                wandb: bool = False,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
         # run experiments
@@ -199,12 +219,13 @@ class LearningExperiment(Experiment):
             verbose=True,
             dataset=datasets,
             metric=metrics,
-            fold=list(range(FOLDS)),
+            fold=list(range(folds)),
+            folds=folds,
             alpha=alpha,
             units=None,
             epochs=epochs,
             batch=batch,
-            entity=entity
+            wandb=wandb
         )
         # get results
         results = {dataset: [] for dataset in datasets.keys()}

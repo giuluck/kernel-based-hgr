@@ -122,17 +122,24 @@ class MultiLayerPerceptron(pl.LightningModule):
             tot_loss = def_loss + reg_loss
             self.manual_backward(-tot_loss)
             reg_opt.step()
-        # return the information about the training
-        return {
+        # return and log the information about the training
+        outputs = {
             'loss': tot_loss,
             'def_loss': def_loss,
             'reg_loss': reg_loss,
             'alpha': alpha,
             'reg': reg
         }
+        for key, value in outputs.items():
+            self.log(name=key, value=value, prog_bar=True, on_step=False, on_epoch=True)
+        return outputs
 
     def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Dict[str, Tensor]:
-        return dict()
+        inp, out = batch
+        pred = self.model(inp)
+        loss = self.loss(pred, out)
+        self.log(name='val_loss', value=loss, prog_bar=True, on_step=False, on_epoch=True)
+        return {'val_loss': loss}
 
     def configure_optimizers(self) -> Union[Optimizer, Tuple[Optimizer, Optimizer]]:
         """Configures the optimizer for the MLP depending on whether there is a variable alpha or not."""
