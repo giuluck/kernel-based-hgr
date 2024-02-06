@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from experiments.learning import LearningExperiment
+from experiments import LearningExperiment
 from src.datasets import Communities, Adult
 from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR
 
@@ -12,8 +12,8 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
 
 # list all the valid datasets
 datasets = dict(
-    communities=Communities(continuous=True),
-    adult=Adult(continuous=True)
+    communities=Communities(),
+    adult=Adult()
 )
 
 # list all the valid metrics
@@ -85,4 +85,4 @@ for k, v in args.items():
 print()
 args['datasets'] = {k: datasets[k] for k in args['datasets']}
 args['metrics'] = {k: v for k, v in [metrics[m] for m in args['metrics']]}
-LearningExperiment.learning(**args)
+LearningExperiment.history(**args)

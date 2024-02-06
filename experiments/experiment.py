@@ -78,7 +78,7 @@ class Experiment(Cacheable):
         return {**self.configuration, 'result': self.result.configuration}
 
     @classmethod
-    def doe(cls, file_name: str, save_time: int, verbose: bool, **configuration: Any) -> Dict[Any, 'Experiment']:
+    def doe(cls, file_name: str, save_time: int, verbose: bool, **configuration: Any) -> dict:
         """Runs a combinatorial design of experiments (DoE) with the given characteristics. If possible, loads results
         from the given file which must be stored in the 'results' sub-package. When experiments are running, stores
         their results in the given file every <save_time> seconds."""

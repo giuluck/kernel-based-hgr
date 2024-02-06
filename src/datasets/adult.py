@@ -1,17 +1,15 @@
 import importlib.resources
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Any, List
 
 import pandas as pd
 
-from src.datasets.dataset import Dataset
+from src.datasets.dataset import RealDataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Adult(Dataset):
-    continuous: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=True)
-
-    def _load(self) -> pd.DataFrame:
+class Adult(RealDataset):
+    def _from_csv(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'adult.csv') as filepath:
             data = pd.read_csv(filepath).astype(float)
         # standardize the numerical features while keep the other as they are (categorical binary)
@@ -22,7 +20,7 @@ class Adult(Dataset):
 
     @property
     def configuration(self) -> Dict[str, Any]:
-        return dict(name=self.name, continuous=self.continuous)
+        return dict(name=self.name)
 
     @property
     def name(self) -> str:
@@ -38,7 +36,11 @@ class Adult(Dataset):
 
     @property
     def excluded_name(self) -> str:
-        return 'age' if self.continuous else 'sex'
+        return 'age'
+
+    @property
+    def surrogate_name(self) -> str:
+        return 'marital-status_Never-married'
 
     @property
     def target_name(self) -> str:

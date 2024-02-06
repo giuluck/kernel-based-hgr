@@ -45,16 +45,16 @@ EXTERNAL: List[str] = [
 SEED: int = 0
 """The random seed used in the experiment."""
 
-FOLDS: int = 1  # TODO: replace with 5
+FOLDS: int = 5
 """The number of folds for k-fold cross-validation."""
 
 MINI_BATCH: int = 128
 """The size of a mini batch."""
 
-MINI_EPOCHS: int = 500
+MINI_EPOCHS: int = 200
 """The number of epochs used during training with mini batches."""
 
-FULL_EPOCHS: int = 200
+FULL_EPOCHS: int = 500
 """The number of epochs used during training full batch."""
 
 
@@ -72,14 +72,23 @@ class LearningExperiment(Experiment):
     metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The metric to be used as penalty, or None for unconstrained model."""
 
-    _alpha: Optional[float] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    alpha: Optional[float] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The alpha value for the penalizer."""
 
-    full_batch: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """Whether to train the model full batch or with mini batches."""
+    units: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The number of hidden units used to build the neural model, or None to use the dataset default value."""
+
+    batch: Optional[int] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The batch size used during training, or None to train full batch."""
+
+    epochs: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The number of training epochs."""
 
     entity: Optional[str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """Either the Weights & Biases entity, or None for no logging."""
+
+    def __post_init__(self):
+        assert self.metric is not None or self.alpha is None, "If metric=None, alpha must be None as well."
 
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
@@ -88,11 +97,10 @@ class LearningExperiment(Experiment):
         trn, val = self.dataset.data(folds=FOLDS, seed=SEED)[self.fold]
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
         val_data = Data(x=val[self.dataset.input_names], y=val[self.dataset.target_name])
-        epochs = FULL_EPOCHS if self.full_batch else MINI_EPOCHS
-        batch = len(trn) if self.full_batch else MINI_BATCH
         # build model
+        units = self.dataset.units if self.units is None else self.units
         model = MultiLayerPerceptron(
-            units=[len(self.dataset.input_names), *self.dataset.units],
+            units=[len(self.dataset.input_names), *units],
             classification=self.dataset.classification,
             feature=self.dataset.excluded_index,
             metric=self.metric,
@@ -101,9 +109,9 @@ class LearningExperiment(Experiment):
         # build trainer and callback
         callback = Callback(experiment=self)
         trainer = pl.Trainer(
-            min_epochs=epochs,
-            max_epochs=epochs,
-            check_val_every_n_epoch=epochs + 1,
+            min_epochs=self.epochs,
+            max_epochs=self.epochs,
+            check_val_every_n_epoch=self.epochs + 1,
             callbacks=[callback],
             deterministic=True,
             enable_progress_bar=True,
@@ -115,14 +123,14 @@ class LearningExperiment(Experiment):
         start = time.time()
         trainer.fit(
             model=model,
-            train_dataloaders=DataLoader(trn_data, batch_size=batch, num_workers=4, persistent_workers=True),
+            train_dataloaders=DataLoader(trn_data, batch_size=self.batch, num_workers=4, persistent_workers=True),
             val_dataloaders=DataLoader(val_data, batch_size=len(val), num_workers=4, persistent_workers=True)
         )
         gap = time.time() - start
         # store internal and external results
         int_results, ext_results = {}, {}
         for key, value in callback.results.items():
-            structure = int_results if key in EXTERNAL else ext_results
+            structure = ext_results if key in EXTERNAL else int_results
             structure[key] = value
         with importlib.resources.path('experiments.results', external) as path:
             assert not path.exists(), f"File '{self.key}' is already present in package 'experiments.results'"
@@ -130,11 +138,6 @@ class LearningExperiment(Experiment):
             pickle.dump(ext_results, file=file)
         # return experiments
         return Experiment.Result(timestamp=start, execution=gap, external=external, **int_results)
-
-    @property
-    def alpha(self) -> Optional[float]:
-        """The alpha value for the penalizer (defaults to None when no penalty is used)."""
-        return None if self.metric == 'unc' else self._alpha
 
     @property
     def name(self) -> str:
@@ -148,24 +151,48 @@ class LearningExperiment(Experiment):
             fold=self.fold,
             metric={'name': 'unconstrained'} if self.metric is None else self.metric.configuration,
             alpha=self.alpha,
-            full_batch=self.full_batch
+            units=self.units,
+            batch=self.batch,
+            epochs=self.epochs
         )
 
     @property
     def key(self) -> str:
-        metric = None if self.metric is None else self.metric.key
-        return f'{self.name}_{self.dataset.key}_{metric}_{self.alpha}_{self.full_batch}_{self.fold}'
+        m = None if self.metric is None else self.metric.key
+        return f'{self.name}_{self.dataset.key}_{m}_{self.alpha}_{self.units}_{self.batch}_{self.epochs}_{self.fold}'
 
     @staticmethod
-    def learning(datasets: Dict[str, Dataset],
-                 metrics: Dict[str, HGR],
-                 alpha: Optional[float] = None,
-                 full_batch: bool = True,
-                 entity: Optional[str] = None,
-                 formats: Iterable[str] = ('png',),
-                 plot: bool = False):
+    def calibration(datasets: Dict[str, Dataset],
+                    batches: Iterable[Optional[int]] = (None, 128),
+                    units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
+                    entity: Optional[str] = None,
+                    formats: Iterable[str] = ('png',),
+                    plot: bool = False):
+        experiments = LearningExperiment.doe(
+            file_name='learning',
+            save_time=0,
+            verbose=True,
+            dataset=datasets,
+            fold=list(range(FOLDS)),
+            batch=batches,
+            units=units,
+            epochs=500,
+            metric=None,
+            alpha=None,
+            entity=entity
+        )
+
+    @staticmethod
+    def history(datasets: Dict[str, Dataset],
+                metrics: Dict[str, HGR],
+                alpha: Optional[float] = None,
+                full_batch: bool = True,
+                entity: Optional[str] = None,
+                formats: Iterable[str] = ('png',),
+                plot: bool = False):
         # run experiments
         metrics = {'UNC': None, **metrics}
+        epochs, batch = (FULL_EPOCHS, -1) if full_batch else (MINI_EPOCHS, MINI_BATCH)
         experiments = LearningExperiment.doe(
             file_name='learning',
             save_time=0,
@@ -173,8 +200,10 @@ class LearningExperiment(Experiment):
             dataset=datasets,
             metric=metrics,
             fold=list(range(FOLDS)),
-            _alpha=alpha,
-            full_batch=full_batch,
+            alpha=alpha,
+            units=None,
+            epochs=epochs,
+            batch=batch,
             entity=entity
         )
         # get results
@@ -208,7 +237,8 @@ class LearningExperiment(Experiment):
         for dataset, group in results.items():
             group = pd.DataFrame(group)
             kpis = group['kpi'].unique()
-            fig, axes = plt.subplots(2, len(kpis), figsize=(5 * len(kpis), 8), tight_layout=True)
+            col = len(kpis)
+            fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
             for i, split in enumerate(['Train', 'Val']):
                 for j, kpi in enumerate(kpis):
                     sns.lineplot(
@@ -224,6 +254,7 @@ class LearningExperiment(Experiment):
                         ax=axes[i, j]
                     )
                     axes[i, j].set_ylabel(f'{split} {kpi}')
+                    axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
             # store, print, and plot if necessary
             for extension in formats:
                 name = f'learning_{dataset}_{full_batch}.{extension}'

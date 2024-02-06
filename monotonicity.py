@@ -10,8 +10,8 @@ log.setLevel(logging.ERROR)
 
 # list all the valid datasets
 datasets = dict(
-    adult=Adult(continuous=True),
-    communities=Communities(continuous=True),
+    adult=Adult(),
+    communities=Communities(),
     linear=Polynomial(degree_x=1, degree_y=1, noise=0.0),
     x_square=Polynomial(degree_x=2, degree_y=1, noise=0.0),
     x_cubic=Polynomial(degree_x=3, degree_y=1, noise=0.0),

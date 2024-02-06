@@ -1,7 +1,7 @@
-import copy
 import time
 from typing import List, Dict, Any, Optional
 
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 import wandb
@@ -19,16 +19,9 @@ class Callback(pl.Callback):
         self._experiment: Any = experiment
         self._time: Optional[float] = None
         self._epoch_cache: List[Dict[str, Any]] = []
-        self._train_cache: List[Dict[str, Any]] = []
         self.results: Dict[str, Any] = {}
 
     def on_train_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        # include general information to the results
-        self.results['train_inputs'] = trainer.train_dataloader.dataset.x
-        self.results['train_target'] = trainer.train_dataloader.dataset.y
-        self.results['val_inputs'] = trainer.val_dataloaders.dataset.x
-        self.results['val_target'] = trainer.val_dataloaders.dataset.y
-        self.results['epochs'] = trainer.max_epochs
         # start and log on wandb if necessary
         if self._experiment.entity is not None:
             wandb.init(
@@ -37,7 +30,6 @@ class Callback(pl.Callback):
                 name=self._experiment.key,
                 config=self._experiment.configuration
             )
-            wandb.log(self.results)
 
     def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         self._time = time.time()
@@ -49,39 +41,38 @@ class Callback(pl.Callback):
                            batch: Any,
                            batch_idx: int):
         # append batch output on cache
-        self._epoch_cache.append(outputs)
+        self._epoch_cache.append({key: value.numpy(force=True).item() for key, value in outputs.items()})
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        # compute mean of cached outputs
-        keys = [] if len(self._epoch_cache) == 0 else self._epoch_cache[0].keys()
-        cache = {key: 0.0 for key in keys}
-        for output in self._epoch_cache:
-            for key in keys:
-                cache[key] += output[key]
-        # build results dictionary and store it
-        results = {
-            **{key: value / len(self._epoch_cache) for key, value in cache.items()},
-            'time': time.time() - self._time,
-            'model': copy.deepcopy(pl_module),
-            'train_predictions': pl_module(self.results['train_inputs']),
-            'val_predictions': pl_module(self.results['val_inputs'])
+        # compute mean of cached outputs and use it to build a dictionary with other results
+        logs = {
+            **pd.DataFrame(self._epoch_cache).mean().to_dict(),
+            'train_predictions': pl_module(trainer.train_dataloader.dataset.x),
+            'val_predictions': pl_module(trainer.val_dataloaders.dataset.x),
+            'time': time.time() - self._time
         }
-        self._train_cache.append(results)
+        for key, value in logs.items():
+            result_list = self.results.get(key, [])
+            result_list.append(value)
+            self.results[key] = result_list
+        # log if necessary, then empty caches
         if self._experiment.entity is not None:
-            wandb.log(results)
-        # empty cache and time
-        self._time = None
+            wandb.log(logs)
         self._epoch_cache = []
+        self._time = None
 
     def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        # close wandb if necessary
+        # include general information to the results
+        logs = dict(
+            train_inputs=trainer.train_dataloader.dataset.x,
+            train_target=trainer.train_dataloader.dataset.y,
+            val_inputs=trainer.val_dataloaders.dataset.x,
+            val_target=trainer.val_dataloaders.dataset.y,
+            epochs=trainer.max_epochs,
+            model=pl_module
+        )
+        self.results.update(logs)
+        # store model and close wandb if necessary
         if self._experiment.entity:
+            wandb.log(logs)
             wandb.finish()
-        # build results
-        keys = [] if len(self._train_cache) == 0 else self._train_cache[0].keys()
-        results = {key: [] for key in keys}
-        for res in self._train_cache:
-            for key in keys:
-                results[key].append(res[key])
-        self.results.update(results)
-        self._train_cache = []

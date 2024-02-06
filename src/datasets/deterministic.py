@@ -40,10 +40,6 @@ class Deterministic(Dataset, ABC):
         return []
 
     @property
-    def continuous(self) -> bool:
-        return True
-
-    @property
     def excluded_name(self) -> str:
         return 'x'
 

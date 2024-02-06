@@ -151,9 +151,9 @@ class KernelBasedHGR(KernelsHGR):
             x0 = np.concatenate((alp0, bet0))
         s = minimize(_fun, jac=True, hess=lambda *_: fun_hess, x0=x0, constraints=[constraint], method='trust-constr')
         # reconstruct alpha and beta by adding zeros wherever the indices were not considered
-        alpha = np.zeros(dx)
+        alpha = np.zeros(f.shape[1])
         alpha[f_indices] = s.x[:dx]
-        beta = np.zeros(dy)
+        beta = np.zeros(g.shape[1])
         beta[g_indices] = s.x[dx:]
         return alpha, beta
 

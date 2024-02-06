@@ -1,7 +1,7 @@
 import argparse
 from typing import List
 
-from experiments.experiment import Experiment
+from experiments import Experiment
 
 FILES: List[str] = ['learning', 'correlation']
 

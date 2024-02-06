@@ -57,7 +57,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             alpha = Variable(torch.zeros(1), requires_grad=True, name='alpha')
         # otherwise, check that either there is a penalty or alpha is None (since there is no penalty)
         else:
-            assert metric is not None or alpha is None, "If penalty=None, alpha must be None as well."
+            assert metric is not None or alpha is None, "If metric=None, alpha must be None as well."
 
         # build a dictionary of arguments for the penalizer and check input consistency
         if isinstance(metric, DoubleKernelHGR):
