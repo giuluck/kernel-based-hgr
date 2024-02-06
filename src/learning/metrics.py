@@ -3,7 +3,7 @@ from typing import Literal, Callable
 
 import numpy as np
 import torch
-from sklearn.metrics import mean_squared_error, log_loss, r2_score, accuracy_score
+from sklearn.metrics import mean_squared_error, log_loss, r2_score, roc_auc_score
 
 from src.hgr import HGR, DoubleKernelHGR, AdversarialHGR, DensityHGR
 
@@ -75,7 +75,7 @@ class Loss(Metric):
         super(Loss, self).__init__(name=name)
 
     def __call__(self, x: np.ndarray, y: np.ndarray, p: np.ndarray) -> torch.Tensor:
-        return self._metric(y_true=y, y_pred=p)
+        return self._metric(y, p)
 
 
 class Accuracy(Metric):
@@ -87,8 +87,8 @@ class Accuracy(Metric):
             Whether the task is a regression or a classification one.
         """
         if classification:
-            metric = lambda y_true, y_pred: accuracy_score(y_true=y_true, y_pred=np.round(y_pred))
-            name = 'ACC'
+            metric = roc_auc_score
+            name = 'AUC'
         else:
             metric = r2_score
             name = 'R2'
@@ -96,4 +96,4 @@ class Accuracy(Metric):
         super(Accuracy, self).__init__(name=name)
 
     def __call__(self, x: np.ndarray, y: np.ndarray, p: np.ndarray) -> torch.Tensor:
-        return self._metric(y_true=y, y_pred=p)
+        return self._metric(y, p)

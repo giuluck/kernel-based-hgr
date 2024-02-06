@@ -28,7 +28,7 @@ class Adult(RealDataset):
 
     @property
     def units(self) -> List[int]:
-        return [32, 32, 32]
+        return [32, 32]
 
     @property
     def excluded_name(self) -> str:
