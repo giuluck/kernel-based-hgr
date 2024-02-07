@@ -1,0 +1,58 @@
+import argparse
+import logging
+
+from experiments import AnalysisExperiment
+from src.datasets import *
+
+log = logging.getLogger("lightning_fabric")
+log.propagate = False
+log.setLevel(logging.ERROR)
+
+# list all the valid datasets
+datasets = dict(
+    communities=Communities(),
+    adult=Adult(),
+    census=Census()
+)
+
+# build argument parser
+parser = argparse.ArgumentParser(description='Leverages HGR to assume the direction of the causal link')
+parser.add_argument(
+    '-d',
+    '--datasets',
+    type=str,
+    nargs='+',
+    choices=list(datasets),
+    default=list(datasets),
+    help='the datasets on which to run the experiment'
+)
+parser.add_argument(
+    '-on',
+    '--on',
+    type=str,
+    choices=['surrogate', 'target', 'both'],
+    default='both',
+    help='the features between which the importance is computed'
+)
+parser.add_argument(
+    '-f',
+    '--formats',
+    type=str,
+    nargs='*',
+    default=['png'],
+    help='the extensions of the files to save'
+)
+parser.add_argument(
+    '--plot',
+    action='store_true',
+    help='whether to plot the results'
+)
+
+# parse arguments, build experiments, then export the results
+args = parser.parse_args().__dict__
+print("Starting experiment 'calibration'...")
+for k, v in args.items():
+    print('  >', k, '-->', v)
+print()
+args['datasets'] = {k: datasets[k] for k in args['datasets']}
+AnalysisExperiment.causality(**args)

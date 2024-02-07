@@ -1,3 +1,4 @@
 from experiments.correlation import CorrelationExperiment
 from experiments.experiment import Experiment
 from experiments.learning import LearningExperiment
+from experiments.analysis import AnalysisExperiment
