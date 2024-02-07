@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from experiments import CorrelationExperiment
-from src.datasets import Polynomial, NonLinear, Communities, Adult
+from src.datasets import Polynomial, NonLinear, Communities, Adult, Census
 
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
@@ -11,6 +11,7 @@ log.setLevel(logging.ERROR)
 # list all the valid datasets
 datasets = dict(
     adult=Adult(),
+    census=Census(),
     communities=Communities(),
     linear=Polynomial(degree_x=1, degree_y=1, noise=0.0),
     x_square=Polynomial(degree_x=2, degree_y=1, noise=0.0),

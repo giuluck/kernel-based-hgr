@@ -1,3 +1,4 @@
+import gc
 import importlib.resources
 import itertools
 import os
@@ -128,18 +129,18 @@ class Experiment(Cacheable):
             # noinspection PyArgumentList
             experiment = cls(**config)
             experiments[index] = experiment
-            if verbose:
-                print(flush=True)
-                print(f'Running Experiment {i + 1} of {total}:')
-                for key, value in experiment.configuration.items():
-                    print(f'  > {key.upper()}: {value}')
-                print(end='', flush=True)
             # check if the experiment output is already in the dictionary based on its key
             key = experiment.key
             out = results.get(key)
             # if the experiment is not in the dictionary, store its output (it computes the results automatically)
             # otherwise, check that the data is correct and inject the stored result
             if out is None:
+                if verbose:
+                    print(flush=True)
+                    print(f'Running Experiment {i + 1} of {total}:')
+                    for par, val in experiment.configuration.items():
+                        print(f'  > {par.upper()}: {val}')
+                    print(end='', flush=True)
                 results[key] = experiment.output
                 # whenever the gap is larger than the expected time save the results
                 # otherwise, flag that results must be saved at the end of the doe
@@ -159,6 +160,8 @@ class Experiment(Cacheable):
                     assert exp == ref, f"Wrong attribute '{k}' loaded for '{key}', expected {exp}, got {ref}"
                 experiment._cache['result'] = Experiment.Result(**out.pop('result'))
                 assert len(out) == 0, f"Output has additional keys {out.keys()} which are not expected for '{key}'"
+            # run garbage collector to free memory before running the next experiments
+            gc.collect()
         # if necessary, save the results at the end of the doe, then return the experiments
         if to_save:
             # dump the file before writing to check if it is pickle-compliant
@@ -209,11 +212,18 @@ class Experiment(Cacheable):
                     output[idx] = res
                 else:
                     external = res['result']['external']
-                    if external is None:
-                        print(f"CLEAR: '{idx}' from '{filename}.pkl'")
-                    else:
+                    print(f"CLEAR: '{idx}' from '{filename}.pkl'", end='')
+                    if external is not None:
                         externals.append(external)
-                        print(f"CLEAR: '{idx}' from '{filename}.pkl and external file '{external}'")
+                        print(f" and external file '{external}'", end='')
+                    # -------------------------------------------------------------------------------------
+                    # QUICK PATCH TO MULTIPLE EXTERNAL FILES IN HISTORY CALLBACK FOR LEARNING EXPERIMENTS
+                    if res['experiment'] == 'learning':
+                        histories = res['result']['history'].external
+                        externals.extend(histories)
+                        print(f' (plus {len(histories)} history files)', end='')
+                    # -------------------------------------------------------------------------------------
+                    print()
             if not force:
                 result = input(f"\nAre you sure you want to remove {len(results) - len(output)} experiments from "
                                f"'{filename}.pkl', leaving {len(output)} experiments left? (Y/N)\n")

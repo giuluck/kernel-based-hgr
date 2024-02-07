@@ -94,13 +94,6 @@ parser.add_argument(
     help='the number of columns in the final plot'
 )
 parser.add_argument(
-    '-l',
-    '--legend',
-    type=int,
-    default=1,
-    help='where to position the legend in the final plot'
-)
-parser.add_argument(
     '-f',
     '--formats',
     type=str,

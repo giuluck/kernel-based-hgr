@@ -17,7 +17,7 @@ from tqdm import tqdm
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.learning import MultiLayerPerceptron, Data, ResultsCallback, ProgressCallback, Loss, Accuracy, Metric
+from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History
 
 PALETTE: List[str] = [
     '#000000',
@@ -33,23 +33,10 @@ PALETTE: List[str] = [
 ]
 """The color palette for plotting data."""
 
-PROJECT: str = 'kernel-based-hgr'
-"""The name of the wandb project."""
-
-EXTERNAL: List[str] = [
-    'train_predictions',
-    'train_inputs',
-    'train_target',
-    'val_predictions',
-    'val_inputs',
-    'val_target'
-]
-"""The names of the results to be stored in the external file."""
-
 SEED: int = 0
 """The random seed used in the experiment."""
 
-MINI_BATCH: int = 128
+MINI_BATCH: int = 512
 """The size of a mini batch."""
 
 MINI_EPOCHS: int = 100
@@ -82,21 +69,20 @@ class LearningExperiment(Experiment):
     units: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of hidden units used to build the neural model, or None to use the dataset default value."""
 
-    batch: Optional[int] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The batch size used during training, or None to train full batch."""
+    batch: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The batch size used during training, or -1 to train full batch."""
 
     epochs: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of training epochs."""
 
-    log: bool = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """Whether to log on Weights & Biases."""
+    wandb_project: Optional[str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The name of the Weights & Biases project for logging, or None for no logging."""
 
     def __post_init__(self):
         assert self.metric is not None or self.alpha is None, "If metric=None, alpha must be None as well."
 
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
-        external = f'{self.key}.pkl'
         # retrieve train and validation data from splits and set parameters
         trn, val = self.dataset.data(folds=self.folds, seed=SEED)[self.fold]
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
@@ -111,51 +97,51 @@ class LearningExperiment(Experiment):
             alpha=self.alpha
         )
         # build trainer and callback
-        callback = ResultsCallback()
-        if self.log:
-            logger = WandbLogger(
-                project=PROJECT,
-                name=self.key,
-                log_model='all'
-            )
-            logger.experiment.config.update(self.configuration)
+        logger = InternalLogger()
+        history = History(key=self.key)
+        if self.wandb_project is not None:
+            wandb_logger = WandbLogger(project=self.wandb_project, name=self.key, log_model='all')
+            wandb_logger.experiment.config.update(self.configuration)
+            loggers = [logger, wandb_logger]
         else:
-            logger = None
+            loggers = [logger]
         trainer = pl.Trainer(
             deterministic=True,
             min_epochs=self.epochs,
             max_epochs=self.epochs,
-            callbacks=[callback, ProgressCallback()],
-            logger=logger,
+            logger=loggers,
+            callbacks=[history, Progress()],
             check_val_every_n_epoch=1,
             num_sanity_val_steps=0,
             log_every_n_steps=1,
-            enable_progress_bar=True,
+            enable_progress_bar=False,
             enable_checkpointing=False,
             enable_model_summary=False
         )
         # run fitting
         start = time.time()
-        batch_size = len(trn) if self.batch is None else self.batch
+        batch_size = len(trn) if self.batch == -1 else self.batch
         trainer.fit(
             model=model,
-            train_dataloaders=DataLoader(trn_data, batch_size=batch_size, num_workers=4, persistent_workers=True),
-            val_dataloaders=DataLoader(val_data, batch_size=len(val), num_workers=4, persistent_workers=True)
+            train_dataloaders=DataLoader(trn_data, batch_size=batch_size),
+            val_dataloaders=DataLoader(val_data, batch_size=len(val))
         )
         gap = time.time() - start
-        if self.log:
+        # close wandb in case it was used in the logger
+        if self.wandb_project is not None:
             wandb.finish()
-        # store internal and external results
-        int_results, ext_results = {}, {}
-        for key, value in callback.results.items():
-            structure = ext_results if key in EXTERNAL else int_results
-            structure[key] = value
+        # store external files and return result
+        external = f'{self.key}.pkl'
         with importlib.resources.path('experiments.results', external) as path:
-            assert not path.exists(), f"File '{self.key}' is already present in package 'experiments.results'"
-        with open(path, 'wb') as file:
-            pickle.dump(ext_results, file=file)
-        # return experiments
-        return Experiment.Result(timestamp=start, execution=gap, external=external, **int_results)
+            assert not path.exists(), f"Experiment '{self.key}' is already present in package 'experiments.results'"
+            with open(path, 'wb') as file:
+                pickle.dump({
+                    'train_inputs': trn_data.x,
+                    'train_target': trn_data.y,
+                    'val_inputs': val_data.x,
+                    'val_target': val_data.y
+                }, file=file)
+        return Experiment.Result(timestamp=start, execution=gap, history=history, external=external, **logger.results)
 
     @property
     def name(self) -> str:
@@ -182,17 +168,15 @@ class LearningExperiment(Experiment):
                 f'{self.fold}_{self.folds}')
 
     @staticmethod
-    def calibration(datasets: Dict[str, Callable[[int], Dataset]],
-                    features: Iterable[int],
-                    batches: Iterable[Optional[int]] = (None, 128),
+    def calibration(datasets: Dict[str, Dataset],
+                    batches: Iterable[int] = (-1, 128, 512),
                     units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
-                    log: bool = False,
+                    wandb_project: Optional[str] = None,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
-        def configuration(key0, bt, un):
-            ds, ft = key0
-            classification = datasets[ds](ft).classification
-            return dict(dataset=ds, feature=ft, batch=bt, units=un), [
+        def configuration(ds, bt, un, fl):
+            classification = datasets[ds].classification
+            return dict(dataset=ds, batch=bt, units=un, fold=fl), [
                 Loss(classification=classification),
                 Accuracy(classification=classification)
             ]
@@ -202,37 +186,64 @@ class LearningExperiment(Experiment):
             file_name='learning',
             save_time=0,
             verbose=True,
-            dataset={(k, f): ds(f) for k, ds in datasets.items() for f in features},
+            dataset=datasets,
             batch={str(b): b for b in batches},
             units={str(u): u for u in units},
-            fold=0,
-            folds=1,
-            epochs=300,
+            fold=[0, 1, 2],
+            folds=3,
+            epochs=3,  # TODO: 300
             metric=None,
             alpha=None,
-            log=log
+            wandb_project=wandb_project
         )
-        # get results and plot
+        # get metric results and add time
         results = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
+        times = []
+        for index, experiment in experiments.items():
+            info, _ = configuration(*index)
+            times += [{
+                **info,
+                'kpi': 'Time',
+                'split': 'Train',
+                'epoch': epoch,
+                'value': experiment.result['time'][epoch]
+            } for epoch in range(experiment.epochs)]
+        results = pd.concat((results, pd.DataFrame(times)))
+        # plot results
         sns.set_context('notebook')
         sns.set_style('whitegrid')
-        for dataset in datasets.keys():
-            for unit in units:
-                fig = LearningExperiment._plot(
-                    group=results[np.logical_and(results['dataset'] == dataset, results['units'] == str(unit))],
-                    hue='feature',
-                    style='batch',
-                    palette=PALETTE[1:len(features) + 1]
-                )
-                # store, print, and plot if necessary
-                for extension in formats:
-                    name = f'calibration_{dataset}_{unit}.{extension}'
-                    with importlib.resources.path('experiments.exports', name) as file:
-                        fig.savefig(file, bbox_inches='tight')
-                if plot:
-                    fig.suptitle(f"Calibration Results for {dataset.title()} with Units {unit}")
-                    fig.show()
-                plt.close(fig)
+        for (dataset, kpi), data in results.groupby(['dataset', 'kpi']):
+            cl = len(units)
+            rw = len(batches)
+            fig, axes = plt.subplots(rw, cl, figsize=(5 * cl, 4 * rw), sharex='all', sharey='all', tight_layout=True)
+            # used to index the axes in case either or both units and batches have only one value
+            axes = np.array(axes).reshape(rw, cl)
+            for i, batch in enumerate(batches):
+                for j, unit in enumerate(units):
+                    sns.lineplot(
+                        data=data[np.logical_and(data['batch'] == str(batch), data['units'] == str(unit))],
+                        x='epoch',
+                        y='value',
+                        hue='split',
+                        style='split',
+                        estimator='mean',
+                        errorbar='sd',
+                        linewidth=2,
+                        palette=['black'] if kpi == 'Time' else PALETTE[1:3],
+                        ax=axes[i, j]
+                    )
+                    axes[i, j].set_ylabel(kpi)
+                    axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'ACC'] else data[data['epoch'] > 20]['value'].max()))
+                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {unit}")
+            # store, print, and plot if necessary
+            for extension in formats:
+                name = f'calibration_{kpi}_{dataset}.{extension}'
+                with importlib.resources.path('experiments.exports', name) as file:
+                    fig.savefig(file, bbox_inches='tight')
+            if plot:
+                fig.suptitle(f"Calibration {kpi} for {dataset.title()}")
+                fig.show()
+            plt.close(fig)
 
     @staticmethod
     def history(datasets: Dict[str, Dataset],
@@ -272,12 +283,26 @@ class LearningExperiment(Experiment):
         sns.set_context('notebook')
         sns.set_style('whitegrid')
         for dataset in datasets.keys():
-            fig = LearningExperiment._plot(
-                group=results[results['dataset'] == dataset],
-                hue='metrics',
-                style='metrics',
-                palette=PALETTE[:len(metrics)]
-            )
+            group = results[results['dataset'] == dataset]
+            kpis = group['kpi'].unique()
+            col = len(kpis)
+            fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
+            for i, split in enumerate(['Train', 'Val']):
+                for j, kpi in enumerate(kpis):
+                    sns.lineplot(
+                        data=group[np.logical_and(group['split'] == split, group['kpi'] == kpi)],
+                        x='epoch',
+                        y='value',
+                        estimator='mean',
+                        errorbar='sd',
+                        linewidth=2,
+                        hue='metrics',
+                        style='metrics',
+                        palette=PALETTE[:len(metrics)],
+                        ax=axes[i, j]
+                    )
+                    axes[i, j].set_ylabel(f'{split} {kpi}')
+                    axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
             # store, print, and plot if necessary
             for extension in formats:
                 name = f'history_{dataset}_{full_batch}.{extension}'
@@ -291,7 +316,7 @@ class LearningExperiment(Experiment):
         history = []
         for index, experiment in experiments.items():
             info, _ = configuration(*index)
-            for epoch in range(experiment.result['epochs']):
+            for epoch in range(experiment.epochs):
                 history.append({**info, 'kpi': 'alpha', 'value': experiment.result['alpha'][epoch]})
                 history.append({**info, 'kpi': 'time', 'value': experiment.result['time'][epoch]})
         history = pd.DataFrame(history)
@@ -335,32 +360,12 @@ class LearningExperiment(Experiment):
             yvl = exp['val_target'].numpy(force=True).flatten()
             # compute metrics for each epoch
             info, metrics = configuration(*index)
-            for epoch in range(exp['epochs']):
-                ptr = exp['train_predictions'][epoch].numpy(force=True).flatten()
-                pvl = exp['val_predictions'][epoch].numpy(force=True).flatten()
+            for epoch in range(experiment.epochs):
                 info['epoch'] = epoch
+                hst = exp['history'][epoch]
+                ptr = hst['train_predictions'].numpy(force=True).flatten()
+                pvl = hst['val_predictions'].numpy(force=True).flatten()
                 for mtr in metrics:
                     results.append({**info, 'kpi': mtr.name, 'split': 'Train', 'value': mtr(x=xtr, y=ytr, p=ptr)})
                     results.append({**info, 'kpi': mtr.name, 'split': 'Val', 'value': mtr(x=xvl, y=yvl, p=pvl)})
         return pd.DataFrame(results)
-
-    @staticmethod
-    def _plot(group: pd.DataFrame, **kwargs: Any) -> plt.Figure:
-        kpis = group['kpi'].unique()
-        col = len(kpis)
-        fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
-        for i, split in enumerate(['Train', 'Val']):
-            for j, kpi in enumerate(kpis):
-                sns.lineplot(
-                    data=group[np.logical_and(group['split'] == split, group['kpi'] == kpi)],
-                    x='epoch',
-                    y='value',
-                    estimator='mean',
-                    errorbar='sd',
-                    linewidth=2,
-                    ax=axes[i, j],
-                    **kwargs
-                )
-                axes[i, j].set_ylabel(f'{split} {kpi}')
-                axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
-        return fig

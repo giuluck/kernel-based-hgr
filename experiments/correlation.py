@@ -145,7 +145,6 @@ class CorrelationExperiment(Experiment):
                      algorithm_seeds: Iterable[int] = range(10),
                      test: bool = False,
                      columns: int = 2,
-                     legend: int = 1,
                      formats: Iterable[str] = ('png',),
                      plot: bool = False,
                      save_time: int = 60):
@@ -191,16 +190,13 @@ class CorrelationExperiment(Experiment):
         sns.set_style('whitegrid')
         plots = len(datasets) + 1
         rows = int(np.ceil(plots / columns))
-        legend = (legend + plots - 1) % plots + 1
         fig = {'train': plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)}
         if test:
             fig['test'] = plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)
         for split, figure in fig.items():
             handles, labels, ax = [], [], None
             names = list(datasets.keys())[::-1]
-            for i in np.arange(plots) + 1:
-                if i == legend:
-                    continue
+            for i in np.arange(plots) + 2:
                 name = names.pop()
                 ax = figure.add_subplot(rows, columns, i, sharex=ax, sharey=ax)
                 sns.lineplot(
@@ -226,7 +222,7 @@ class CorrelationExperiment(Experiment):
                 sub_ax.set_xticks([])
                 sub_ax.set_yticks([])
             # plot the legend
-            ax = figure.add_subplot(rows, columns, legend)
+            ax = figure.add_subplot(rows, columns, 1)
             ax.legend(handles, labels, loc='center', labelspacing=1.5, frameon=False)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)

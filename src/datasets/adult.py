@@ -4,12 +4,12 @@ from typing import Dict, Any, List
 
 import pandas as pd
 
-from src.datasets.dataset import RealDataset
+from src.datasets.dataset import SurrogateDataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Adult(RealDataset):
-    def _from_csv(self) -> pd.DataFrame:
+class Adult(SurrogateDataset):
+    def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'adult.csv') as filepath:
             data = pd.read_csv(filepath).astype(float)
         # standardize the numerical features while keep the other as they are (categorical binary)
@@ -41,3 +41,7 @@ class Adult(RealDataset):
     @property
     def target_name(self) -> str:
         return 'income'
+
+    @property
+    def configuration(self) -> Dict[str, Any]:
+        return dict(name=self.name)

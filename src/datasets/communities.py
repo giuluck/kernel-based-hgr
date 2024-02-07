@@ -1,16 +1,15 @@
 import importlib.resources
 from dataclasses import dataclass
-from typing import List
+from typing import List, Any, Dict
 
 import pandas as pd
 
-from src.datasets.dataset import RealDataset
+from src.datasets.dataset import SurrogateDataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Communities(RealDataset):
-
-    def _from_csv(self) -> pd.DataFrame:
+class Communities(SurrogateDataset):
+    def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'communities.csv') as filepath:
             data = pd.read_csv(filepath)
         # standardize all features but race (already binary) and violentPerPop (target to normalize)
@@ -44,3 +43,7 @@ class Communities(RealDataset):
     @property
     def target_name(self) -> str:
         return 'violentPerPop'
+
+    @property
+    def configuration(self) -> Dict[str, Any]:
+        return dict(name=self.name)

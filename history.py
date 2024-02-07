@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import warnings
 
 from experiments import LearningExperiment
 from src.datasets import Communities, Adult
@@ -8,7 +9,7 @@ from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR
 
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
+warnings.filterwarnings("ignore", ".*does not have many workers.*")
 for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytorch_lightning.accelerators.cuda"]:
     log = logging.getLogger(name)
     log.propagate = False
@@ -56,7 +57,7 @@ parser.add_argument(
     help='the alpha value used in the experiments'
 )
 parser.add_argument(
-    '-f',
+    '-k',
     type=int,
     default=3,
     help='the number of folds to be used for cross-validation'
@@ -67,9 +68,11 @@ parser.add_argument(
     help='whether to train the networks full batch or with mini batches'
 )
 parser.add_argument(
-    '--log',
-    action='store_true',
-    help='whether to log on Weights & Biases'
+    '-wp',
+    '--wandb-project',
+    type=str,
+    nargs='?',
+    help='the name of the Weights & Biases project for logging, or None for no logging.'
 )
 parser.add_argument(
     '-f',
@@ -87,7 +90,7 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
-print("Starting experiment 'learning'...")
+print("Starting experiment 'history'...")
 for k, v in args.items():
     print('  >', k, '-->', v)
 print()

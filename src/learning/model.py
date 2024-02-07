@@ -1,3 +1,4 @@
+import time
 from typing import Optional, Union, Iterable, Tuple, Dict, Any
 
 import pytorch_lightning as pl
@@ -92,6 +93,7 @@ class MultiLayerPerceptron(pl.LightningModule):
     def training_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Dict[str, Tensor]:
         """Performs a training step on the given batch."""
         # retrieve the data and the optimizers
+        start = time.time()
         inp, out = batch
         optimizers = self.optimizers()
         def_opt, reg_opt = optimizers if isinstance(optimizers, list) else (optimizers, None)
@@ -123,23 +125,20 @@ class MultiLayerPerceptron(pl.LightningModule):
             self.manual_backward(-tot_loss)
             reg_opt.step()
         # return and log the information about the training
-        additional = {
-            'loss': tot_loss,
-            'def_loss': def_loss,
-            'reg_loss': reg_loss,
-            'alpha': alpha,
-            'reg': reg
-        }
-        for key, value in additional.items():
-            self.log(name=key, value=value, prog_bar=False, on_step=False, on_epoch=True)
-        return {**additional}
+        self.log(name='loss', value=tot_loss, on_step=False, on_epoch=True, reduce_fx='mean')
+        self.log(name='def_loss', value=def_loss, on_step=False, on_epoch=True, reduce_fx='mean')
+        self.log(name='reg_loss', value=reg_loss, on_step=False, on_epoch=True, reduce_fx='mean')
+        self.log(name='alpha', value=alpha, on_step=False, on_epoch=True, reduce_fx='mean')
+        self.log(name='reg', value=reg, on_step=False, on_epoch=True, reduce_fx='mean')
+        self.log(name='time', value=time.time() - start, on_step=False, on_epoch=True, reduce_fx='sum')
+        return tot_loss
 
     def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Dict[str, Tensor]:
         inp, out = batch
         pred = self.model(inp)
         loss = self.loss(pred, out)
-        self.log(name='val_loss', value=loss, prog_bar=False, on_step=False, on_epoch=True)
-        return {'val_loss': loss}
+        self.log(name='val_loss', value=loss, on_step=False, on_epoch=True)
+        return loss
 
     def configure_optimizers(self) -> Union[Optimizer, Tuple[Optimizer, Optimizer]]:
         """Configures the optimizer for the MLP depending on whether there is a variable alpha or not."""
