@@ -363,33 +363,33 @@ class LearningExperiment(Experiment):
             ytr = ext['train_target'].numpy(force=True).flatten()
             xvl = ext['val_inputs'].numpy(force=True)
             yvl = ext['val_target'].numpy(force=True).flatten()
-            # compute metrics for each epoch (if they are present, load pre-computed values from external file)
+            # compute metrics for each epoch
             info, metrics = configuration(*index)
             outputs = {
-                # **{f'train_{mtr.name}': ext.get(f'train_{mtr.name}', []) for mtr in metrics},
-                # **{f'val_{mtr.name}': ext.get(f'val_{mtr.name}', []) for mtr in metrics}
-                **{f'train_{mtr.name}': [] for mtr in metrics},
-                **{f'val_{mtr.name}': [] for mtr in metrics}
+                **{f'train_{mtr.name}': ext.get(f'train_{mtr.name}', []) for mtr in metrics},
+                **{f'val_{mtr.name}': ext.get(f'val_{mtr.name}', []) for mtr in metrics},
             }
-            reserialize = False
-            for epoch in tqdm(range(experiment.epochs), desc=f'Computing Metrics for {experiment.key}'):
-                info['epoch'] = epoch
-                hst = experiment.result['history'][epoch]
-                ptr = hst['train_predictions'].numpy(force=True).flatten()
-                pvl = hst['val_predictions'].numpy(force=True).flatten()
-                for mtr in metrics:
-                    for split, (x, y, p) in zip(['train', 'val'], [(xtr, ytr, ptr), (xvl, yvl, pvl)]):
-                        mtr_outputs = outputs[f'{split}_{mtr.name}']
-                        # in case a value is already present for this metric use it, otherwise compute it
-                        if len(mtr_outputs) > epoch:
-                            mtr_value = mtr_outputs[epoch]
-                        else:
-                            reserialize = True
-                            mtr_value = mtr(x=x, y=y, p=p)
-                            mtr_outputs.append(mtr_value)
-                        results.append({**info, 'kpi': mtr.name, 'split': split.title(), 'value': mtr_value})
-            # if at least one value was re-computed, re-serialize the external file
-            if reserialize:
+            # if the metrics are already pre-computed, load them
+            if np.all([len(v) == experiment.epochs for v in outputs.values()]):
+                print(f'Fetching Metrics for {experiment.key}')
+                df = pd.DataFrame(outputs).melt()
+                df['split'] = df['variable'].map(lambda v: v.split('_')[0])
+                df['kpi'] = df['variable'].map(lambda v: v.split('_')[1])
+                df = df.drop(columns='variable').to_dict(orient='records')
+                results.extend(df)
+            # otherwise, compute and re-serialize them
+            else:
+                assert np.all([len(v) == 0 for v in outputs.values()]), f"Serialized metrics error in {experiment.key}"
+                for epoch in tqdm(range(experiment.epochs), desc=f'Computing Metrics for {experiment.key}'):
+                    info['epoch'] = epoch
+                    hst = experiment.result['history'][epoch]
+                    ptr = hst['train_predictions'].numpy(force=True).flatten()
+                    pvl = hst['val_predictions'].numpy(force=True).flatten()
+                    for mtr in metrics:
+                        for split, (x, y, p) in zip(['train', 'val'], [(xtr, ytr, ptr), (xvl, yvl, pvl)]):
+                            value = mtr(x=x, y=y, p=p)
+                            outputs[f'{split}_{mtr.name}'].append(value)
+                            results.append({**info, 'kpi': mtr.name, 'split': split.title(), 'value': value})
                 ext.update(outputs)
                 with importlib.resources.path('experiments.results', experiment.result.external) as filepath:
                     with open(filepath, 'wb') as file:
