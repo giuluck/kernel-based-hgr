@@ -22,7 +22,7 @@ class RandomizedDependencyCoefficient(HGR):
         correlation = rdc(x=a, y=b)
         return float(correlation), dict()
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Dict[str, Any]) -> torch.Tensor:
         raise AssertionError("RDC metric does not provide gradients")
 
 

@@ -17,7 +17,8 @@ from tqdm import tqdm
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History
+from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History, \
+    Correlation
 
 PALETTE: List[str] = [
     '#000000',
@@ -191,7 +192,7 @@ class LearningExperiment(Experiment):
             units={str(u): u for u in units},
             fold=[0, 1, 2],
             folds=3,
-            epochs=3,  # TODO: 300
+            epochs=300,
             metric=None,
             alpha=None,
             wandb_project=wandb_project
@@ -250,15 +251,17 @@ class LearningExperiment(Experiment):
                 metrics: Dict[str, HGR],
                 alpha: Optional[float] = None,
                 full_batch: bool = True,
-                folds: int = 3,
-                log: bool = False,
+                folds: int = 5,
+                wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
         def configuration(ds, mt, fl):
-            classification = datasets[ds].classification
+            d = datasets[ds]
             return dict(dataset=ds, metric=mt, fold=fl), [
-                Loss(classification=classification),
-                Accuracy(classification=classification)
+                Loss(classification=d.classification),
+                Accuracy(classification=d.classification),
+                Correlation(excluded=d.excluded_index, algorithm='kb'),
+                Correlation(excluded=d.excluded_index, algorithm='nn')
             ]
 
         # run experiments
@@ -276,7 +279,7 @@ class LearningExperiment(Experiment):
             units=None,
             epochs=epochs,
             batch=batch,
-            log=log
+            wandb_project=wandb_project
         )
         # get and plot metric results
         results = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
@@ -296,8 +299,8 @@ class LearningExperiment(Experiment):
                         estimator='mean',
                         errorbar='sd',
                         linewidth=2,
-                        hue='metrics',
-                        style='metrics',
+                        hue='metric',
+                        style='metric',
                         palette=PALETTE[:len(metrics)],
                         ax=axes[i, j]
                     )
@@ -317,11 +320,12 @@ class LearningExperiment(Experiment):
         for index, experiment in experiments.items():
             info, _ = configuration(*index)
             for epoch in range(experiment.epochs):
-                history.append({**info, 'kpi': 'alpha', 'value': experiment.result['alpha'][epoch]})
-                history.append({**info, 'kpi': 'time', 'value': experiment.result['time'][epoch]})
+                history.append({**info, 'epoch': epoch, 'kpi': 'alpha', 'value': experiment.result['alpha'][epoch]})
+                history.append({**info, 'epoch': epoch, 'kpi': 'time', 'value': experiment.result['time'][epoch]})
         history = pd.DataFrame(history)
         row = len(datasets)
         fig, axes = plt.subplots(row, 2, figsize=(10, 4 * row), sharex='all', sharey=None, tight_layout=True)
+        axes = np.array(axes).reshape(row, 2)
         for i, dataset in enumerate(datasets.keys()):
             for j, kpi in enumerate(['alpha', 'time']):
                 sns.lineplot(
@@ -331,8 +335,8 @@ class LearningExperiment(Experiment):
                     estimator='mean',
                     errorbar='sd',
                     linewidth=2,
-                    hue='metrics',
-                    style='metrics',
+                    hue='metric',
+                    style='metric',
                     palette=PALETTE[:len(metrics)],
                     ax=axes[i, j]
                 )
@@ -351,21 +355,43 @@ class LearningExperiment(Experiment):
     def _metrics(experiments: Dict[Any, 'LearningExperiment'],
                  configuration: Callable[[tuple], Tuple[Dict[str, Any], Iterable[Metric]]]) -> pd.DataFrame:
         results = []
-        for index, experiment in tqdm(experiments.items(), desc='Computing Metrics'):
-            exp = experiment.result(external=True)
+        for index, experiment in experiments.items():
+            with importlib.resources.open_binary('experiments.results', experiment.result.external) as file:
+                ext = pickle.load(file=file)
             # retrieve input data
-            xtr = exp['train_inputs'].numpy(force=True)
-            ytr = exp['train_target'].numpy(force=True).flatten()
-            xvl = exp['val_inputs'].numpy(force=True)
-            yvl = exp['val_target'].numpy(force=True).flatten()
-            # compute metrics for each epoch
+            xtr = ext['train_inputs'].numpy(force=True)
+            ytr = ext['train_target'].numpy(force=True).flatten()
+            xvl = ext['val_inputs'].numpy(force=True)
+            yvl = ext['val_target'].numpy(force=True).flatten()
+            # compute metrics for each epoch (if they are present, load pre-computed values from external file)
             info, metrics = configuration(*index)
-            for epoch in range(experiment.epochs):
+            outputs = {
+                # **{f'train_{mtr.name}': ext.get(f'train_{mtr.name}', []) for mtr in metrics},
+                # **{f'val_{mtr.name}': ext.get(f'val_{mtr.name}', []) for mtr in metrics}
+                **{f'train_{mtr.name}': [] for mtr in metrics},
+                **{f'val_{mtr.name}': [] for mtr in metrics}
+            }
+            reserialize = False
+            for epoch in tqdm(range(experiment.epochs), desc=f'Computing Metrics for {experiment.key}'):
                 info['epoch'] = epoch
-                hst = exp['history'][epoch]
+                hst = experiment.result['history'][epoch]
                 ptr = hst['train_predictions'].numpy(force=True).flatten()
                 pvl = hst['val_predictions'].numpy(force=True).flatten()
                 for mtr in metrics:
-                    results.append({**info, 'kpi': mtr.name, 'split': 'Train', 'value': mtr(x=xtr, y=ytr, p=ptr)})
-                    results.append({**info, 'kpi': mtr.name, 'split': 'Val', 'value': mtr(x=xvl, y=yvl, p=pvl)})
+                    for split, (x, y, p) in zip(['train', 'val'], [(xtr, ytr, ptr), (xvl, yvl, pvl)]):
+                        mtr_outputs = outputs[f'{split}_{mtr.name}']
+                        # in case a value is already present for this metric use it, otherwise compute it
+                        if len(mtr_outputs) > epoch:
+                            mtr_value = mtr_outputs[epoch]
+                        else:
+                            reserialize = True
+                            mtr_value = mtr(x=x, y=y, p=p)
+                            mtr_outputs.append(mtr_value)
+                        results.append({**info, 'kpi': mtr.name, 'split': split.title(), 'value': mtr_value})
+            # if at least one value was re-computed, re-serialize the external file
+            if reserialize:
+                ext.update(outputs)
+                with importlib.resources.path('experiments.results', experiment.result.external) as filepath:
+                    with open(filepath, 'wb') as file:
+                        pickle.dump(ext, file=file)
         return pd.DataFrame(results)

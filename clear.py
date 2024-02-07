@@ -1,9 +1,6 @@
 import argparse
-from typing import List
 
 from experiments import Experiment
-
-FILES: List[str] = ['learning', 'correlation']
 
 # build argument parser
 parser = argparse.ArgumentParser(description='Clears the results in the experiment files')
@@ -12,7 +9,7 @@ parser.add_argument(
     '--file',
     type=str,
     nargs='+',
-    default=FILES,
+    default=['learning', 'correlation', 'analysis'],
     help='the name of the experiment (or list of such) to clear'
 )
 parser.add_argument(

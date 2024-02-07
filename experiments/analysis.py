@@ -32,9 +32,8 @@ class AnalysisExperiment(Experiment):
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
         start = time.time()
-        data = self.dataset._data
         a, b = self.features
-        hgr, additional = self.metric.correlation(a=data[a].values, b=data[b].values)
+        hgr, additional = self.metric.correlation(a=self.dataset[a].values, b=self.dataset[b].values)
         gap = time.time() - start
         return Experiment.Result(timestamp=start, execution=gap, hgr=hgr, external=None, **additional)
 
@@ -124,8 +123,8 @@ class AnalysisExperiment(Experiment):
                 else:
                     continue
                 # run experiment
-                x = dataset._data[f1].values
-                y = dataset._data[f2].values
+                x = dataset[f1].values
+                y = dataset[f2].values
                 metrics = {True: DoubleKernelHGR(degree_b=1), False: DoubleKernelHGR(degree_a=1)}
                 experiments = AnalysisExperiment.doe(
                     file_name='analysis',

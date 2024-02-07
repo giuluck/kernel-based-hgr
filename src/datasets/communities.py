@@ -1,14 +1,14 @@
 import importlib.resources
 from dataclasses import dataclass
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 
 import pandas as pd
 
-from src.datasets.dataset import SurrogateDataset
+from src.datasets.dataset import Dataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Communities(SurrogateDataset):
+class Communities(Dataset):
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'communities.csv') as filepath:
             data = pd.read_csv(filepath)
@@ -34,10 +34,11 @@ class Communities(SurrogateDataset):
 
     @property
     def excluded_name(self) -> str:
+        # TODO: return 'pctWhite'
         return 'pctBlack'
 
     @property
-    def surrogate_name(self) -> str:
+    def surrogate_name(self) -> Optional[str]:
         return 'race'
 
     @property

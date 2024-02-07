@@ -40,7 +40,7 @@ class Oracle(KernelsHGR):
             correlation, _ = pearsonr(dataset.f(a), dataset.g(b))
             return abs(float(correlation)), dict()
 
-        def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+        def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Dict[str, Any]) -> torch.Tensor:
             raise AssertionError("Oracle metric does not provide gradients")
 
     # noinspection PyMethodMayBeStatic
@@ -68,5 +68,5 @@ class Oracle(KernelsHGR):
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
         raise AssertionError("Oracle is a factory object, please call method '.instance()' to get a valid metric")
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Dict[str, Any]) -> torch.Tensor:
         raise AssertionError("Oracle is a factory object, please call method '.instance()' to get a valid metric")

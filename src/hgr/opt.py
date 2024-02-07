@@ -92,8 +92,10 @@ class KernelBasedHGR(KernelsHGR):
     @staticmethod
     def _higher_order_coefficients(f: np.ndarray,
                                    g: np.ndarray,
-                                   x0: Optional[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+                                   a0: Optional[np.ndarray],
+                                   b0: Optional[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
         """Computes the kernel-based hgr for higher order degrees."""
+        degree_x, degree_y = f.shape[1], g.shape[1]
         # retrieve the indices of the linearly dependent columns and impose a linear constraint so that the respective
         # weight is null for all but the first one (this processing step allow to avoid degenerate cases when the
         # matrix is not full rank)
@@ -145,15 +147,14 @@ class KernelBasedHGR(KernelsHGR):
             ub=1
         )
         # if no guess is provided, set the initial point as [ 1 / std(F @ 1) | 1 / std(G @ 1) ] then solve the problem
-        if x0 is None:
-            alp0 = np.ones(dx) / f_slim.sum(axis=1).std(ddof=0)
-            bet0 = np.ones(dy) / g_slim.sum(axis=1).std(ddof=0)
-            x0 = np.concatenate((alp0, bet0))
+        a0 = np.ones(dx) / f_slim.sum(axis=1).std(ddof=0) if a0 is None else a0[f_indices]
+        b0 = np.ones(dy) / g_slim.sum(axis=1).std(ddof=0) if b0 is None else b0[g_indices]
+        x0 = np.concatenate((a0, b0))
         s = minimize(_fun, jac=True, hess=lambda *_: fun_hess, x0=x0, constraints=[constraint], method='trust-constr')
         # reconstruct alpha and beta by adding zeros wherever the indices were not considered
-        alpha = np.zeros(f.shape[1])
+        alpha = np.zeros(degree_x)
         alpha[f_indices] = s.x[:dx]
-        beta = np.zeros(g.shape[1])
+        beta = np.zeros(degree_y)
         beta[g_indices] = s.x[dx:]
         return alpha, beta
 
@@ -162,7 +163,8 @@ class KernelBasedHGR(KernelsHGR):
                        b: np.ndarray,
                        degree_a: int,
                        degree_b: int,
-                       x0: Optional[np.ndarray]) -> Tuple[float, np.ndarray, np.ndarray]:
+                       a0: Optional[np.ndarray],
+                       b0: Optional[np.ndarray]) -> Tuple[float, np.ndarray, np.ndarray]:
         """Computes HGR using numpy as backend and returns the correlation along with alpha and beta."""
         # build the kernel matrices
         f = KernelBasedHGR.kernel(a, degree=degree_a, use_torch=False)
@@ -182,7 +184,7 @@ class KernelBasedHGR(KernelsHGR):
             beta = np.ones(1) / std
             alpha, _, _, _ = np.linalg.lstsq(f, g[:, 0] / std, rcond=None)
         else:
-            alpha, beta = KernelBasedHGR._higher_order_coefficients(f=f, g=g, x0=x0)
+            alpha, beta = KernelBasedHGR._higher_order_coefficients(f=f, g=g, a0=a0, b0=b0)
         fa = f @ alpha
         gb = g @ beta
         correlation, _ = pearsonr(fa, gb)
@@ -195,7 +197,8 @@ class KernelBasedHGR(KernelsHGR):
                        b: torch.Tensor,
                        degree_a: int,
                        degree_b: int,
-                       x0: Optional[np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                       a0: Optional[np.ndarray],
+                       b0: Optional[np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Computes HGR using numpy as backend and returns the correlation (without alpha and beta)."""
 
         def standardize(t: torch.Tensor) -> torch.Tensor:
@@ -224,7 +227,12 @@ class KernelBasedHGR(KernelsHGR):
             alpha, _, _, _ = torch.linalg.lstsq(f, gb, driver='gelsd')
             fa = standardize(f @ alpha)
         else:
-            alpha, beta = KernelBasedHGR._higher_order_coefficients(f=f.numpy(force=True), g=g.numpy(force=True), x0=x0)
+            alpha, beta = KernelBasedHGR._higher_order_coefficients(
+                f=f.numpy(force=True),
+                g=g.numpy(force=True),
+                a0=a0,
+                b0=b0
+            )
             alpha = torch.tensor(alpha, dtype=f.dtype)
             beta = torch.tensor(beta, dtype=g.dtype)
             fa = standardize(f @ alpha)
@@ -255,22 +263,24 @@ class DoubleKernelHGR(KernelBasedHGR):
             b=b,
             degree_a=self.degree_a,
             degree_b=self.degree_b,
-            x0=None
+            a0=None,
+            b0=None
         )
         return float(hgr), dict(alpha=alpha, beta=beta)
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
-        # use the given x0 when the metric is used as penalizer for a neural network
-        x0 = kwargs['x0']
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Optional[Dict[str, Any]] = None) -> torch.Tensor:
+        # use the given a0/b0 when the metric is used as penalizer for a neural network
         hgr, alpha, beta = KernelBasedHGR._compute_torch(
             a=a,
             b=b,
             degree_a=self.degree_a,
             degree_b=self.degree_b,
-            x0=x0
+            a0=kwargs['a0'],
+            b0=kwargs['b0']
         )
-        # eventually, replace x0 in the arguments with the new value for the next training step
-        kwargs['x0'] = np.concatenate((alpha.numpy(force=True), beta.numpy(force=True)))
+        # eventually, replace a0/b0 in the arguments with the new value for the next training step
+        kwargs['a0'] = alpha.numpy(force=True)
+        kwargs['b0'] = beta.numpy(force=True)
         return hgr
 
 
@@ -300,8 +310,22 @@ class SingleKernelHGR(KernelBasedHGR):
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
         # compute single-kernel correlations along with kernels
         # (x0 is not used when either one degree is 1, so None is always passed)
-        hgr_a, alpha_a, beta_a = KernelBasedHGR._compute_numpy(a=a, b=b, degree_a=self.degree, degree_b=1, x0=None)
-        hgr_b, alpha_b, beta_b = KernelBasedHGR._compute_numpy(a=a, b=b, degree_a=1, degree_b=self.degree, x0=None)
+        hgr_a, alpha_a, beta_a = KernelBasedHGR._compute_numpy(
+            a=a,
+            b=b,
+            degree_a=self.degree,
+            degree_b=1,
+            a0=None,
+            b0=None
+        )
+        hgr_b, alpha_b, beta_b = KernelBasedHGR._compute_numpy(
+            a=a,
+            b=b,
+            degree_a=1,
+            degree_b=self.degree,
+            a0=None,
+            b0=None
+        )
         # choose the best correlation and return
         if hgr_a > hgr_b:
             hgr = hgr_a
@@ -315,10 +339,24 @@ class SingleKernelHGR(KernelBasedHGR):
             beta = beta_b
         return float(hgr), dict(alpha=alpha, beta=beta)
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Dict[str, Any]) -> torch.Tensor:
         # compute single-kernel correlations
         # (x0 is not used when either one degree is 1, so None is always passed)
-        hgr_a, alpha_a, beta_a = KernelBasedHGR._compute_torch(a=a, b=b, degree_a=self.degree, degree_b=1, x0=None)
-        hgr_b, alpha_b, beta_b = KernelBasedHGR._compute_torch(a=a, b=b, degree_a=1, degree_b=self.degree, x0=None)
+        hgr_a, alpha_a, beta_a = KernelBasedHGR._compute_torch(
+            a=a,
+            b=b,
+            degree_a=self.degree,
+            degree_b=1,
+            a0=None,
+            b0=None
+        )
+        hgr_b, alpha_b, beta_b = KernelBasedHGR._compute_torch(
+            a=a,
+            b=b,
+            degree_a=1,
+            degree_b=self.degree,
+            a0=None,
+            b0=None
+        )
         # return the maximal correlation
         return torch.maximum(hgr_a, hgr_b)

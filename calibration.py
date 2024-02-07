@@ -22,7 +22,7 @@ datasets = dict(
 )
 
 # list the default units to be used in case no units are passed
-units = [[32], [256], [32, 32], [256, 256], [32, 32], [256, 256, 256]]
+units = [[32], [256], [32, 32], [256, 256], [32, 32, 32], [256, 256, 256]]
 
 # build argument parser
 parser = argparse.ArgumentParser(description='Selects the best number of units for unconstrained neural networks')

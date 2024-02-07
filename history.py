@@ -46,7 +46,7 @@ parser.add_argument(
     type=str,
     nargs='*',
     choices=list(metrics),
-    default=['unc', 'dkn', 'skn', 'adv'],
+    default=list(metrics),
     help='the metrics used as penalties'
 )
 parser.add_argument(
@@ -58,8 +58,9 @@ parser.add_argument(
 )
 parser.add_argument(
     '-k',
+    '--folds',
     type=int,
-    default=3,
+    default=5,
     help='the number of folds to be used for cross-validation'
 )
 parser.add_argument(

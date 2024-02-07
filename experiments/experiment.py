@@ -49,6 +49,10 @@ class Experiment(Cacheable):
             return dict(external=self._external, **self._kwargs)
 
         @property
+        def external(self) -> Optional[str]:
+            return self._external
+
+        @property
         def _external_kwargs(self) -> Dict[str, Any]:
             """The external kwargs."""
             if self._external is None:

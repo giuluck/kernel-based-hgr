@@ -32,7 +32,7 @@ class Census(Dataset):
 
     @property
     def units(self) -> List[int]:
-        raise NotImplementedError()
+        raise [32]
 
     @property
     def excluded_name(self) -> str:

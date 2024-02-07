@@ -23,10 +23,10 @@ class DensityHGR(HGR):
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
         a = torch.tensor(a, dtype=torch.float)
         b = torch.tensor(b, dtype=torch.float)
-        correlation = self(a=a, b=b).numpy(force=True).item()
+        correlation = self(a=a, b=b, kwargs=dict()).numpy(force=True).item()
         return float(correlation), dict()
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Dict[str, Any]) -> torch.Tensor:
         return hgr(X=a, Y=b, density=kde)
 
 
@@ -45,10 +45,10 @@ class ChiSquare(HGR):
     def correlation(self, a: np.ndarray, b: np.ndarray) -> Tuple[float, Dict[str, Any]]:
         a = torch.tensor(a, dtype=torch.float)
         b = torch.tensor(b, dtype=torch.float)
-        correlation = self(a=a, b=b).numpy(force=True).item()
+        correlation = self(a=a, b=b, kwargs=dict()).numpy(force=True).item()
         return float(correlation), dict()
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Dict[str, Any]) -> torch.Tensor:
         return chi_2(X=a, Y=b, density=kde)
 
 

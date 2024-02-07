@@ -1,14 +1,14 @@
 import importlib.resources
 from dataclasses import dataclass
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 import pandas as pd
 
-from src.datasets.dataset import SurrogateDataset
+from src.datasets.dataset import Dataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Adult(SurrogateDataset):
+class Adult(Dataset):
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'adult.csv') as filepath:
             data = pd.read_csv(filepath).astype(float)
@@ -35,7 +35,7 @@ class Adult(SurrogateDataset):
         return 'age'
 
     @property
-    def surrogate_name(self) -> str:
+    def surrogate_name(self) -> Optional[str]:
         return 'marital-status_Never-married'
 
     @property

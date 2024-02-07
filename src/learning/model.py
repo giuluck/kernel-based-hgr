@@ -62,7 +62,7 @@ class MultiLayerPerceptron(pl.LightningModule):
 
         # build a dictionary of arguments for the penalizer and check input consistency
         if isinstance(metric, DoubleKernelHGR):
-            penalty_arguments = dict(x0=None)
+            penalty_arguments = dict(a0=None, b0=None)
         elif isinstance(metric, AdversarialHGR):
             penalty_arguments = dict(epochs=EPOCHS, net_1=Net_HGR(), net_2=Net2_HGR())
         else:
@@ -107,7 +107,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             alpha = torch.tensor(0.0)
             reg_loss = torch.tensor(0.0)
         else:
-            reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), **self._penalty_arguments)
+            reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), kwargs=self._penalty_arguments)
             reg_loss = self.alpha * reg
             alpha = self.alpha
         # build the total minimization loss and perform the backward pass
@@ -119,7 +119,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             reg_opt.zero_grad()
             pred = self.model(inp)
             def_loss = self.loss(pred, out)
-            reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), **self._penalty_arguments)
+            reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), kwargs=self._penalty_arguments)
             reg_loss = self.alpha * reg
             tot_loss = def_loss + reg_loss
             self.manual_backward(-tot_loss)

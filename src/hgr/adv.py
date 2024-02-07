@@ -68,7 +68,7 @@ class AdversarialHGR(KernelsHGR):
         correlation = correlation.numpy(force=True).item()
         return float(correlation), dict(f=net_1, g=net_2)
 
-    def __call__(self, a: torch.Tensor, b: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+    def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Dict[str, Any]) -> torch.Tensor:
         def standardize(t: torch.Tensor) -> torch.Tensor:
             t_std, t_mean = torch.std_mean(t, correction=0)
             return (t - t_mean) / (t_std + EPSILON)
