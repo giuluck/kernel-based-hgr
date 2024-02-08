@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import StratifiedKFold, KFold, train_test_split
+from sklearn.model_selection import train_test_split
 
 from src.serializable import Cacheable
 
@@ -68,16 +68,15 @@ class Dataset(Cacheable):
         """The name of the discrete surrogate."""
         return None
 
-    def data(self, folds: int, seed: int) -> List[Tuple[pd.DataFrame, pd.DataFrame]]:
-        """Returns a list of tuples <train, val> (if folds == 1, splits between 70% train and 30% test)."""
+    def data(self, split: Optional[float], seed: int) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
+        """Returns a tuple <train, test> split using the given value (if split is None, test is None as well)."""
         data = self._data
-        if folds == 1:
-            stratify = data[self.target_name] if self.classification else None
-            idx = [train_test_split(data.index, test_size=0.3, stratify=stratify, random_state=seed)]
+        if split is None:
+            return data.copy(), None
         else:
-            kf = StratifiedKFold if self.classification else KFold
-            idx = kf(n_splits=folds, shuffle=True, random_state=seed).split(X=data.index, y=data[self.target_name])
-        return [(data.iloc[tr], data.iloc[ts]) for tr, ts in idx]
+            stratify = data[self.target_name] if self.classification else None
+            tr, ts = train_test_split(data.index, test_size=split, stratify=stratify, random_state=seed)
+            return data.iloc[tr], data.iloc[ts]
 
     def input(self, backend: BackendType = 'numpy') -> BackendOutput:
         """The input features matrix."""

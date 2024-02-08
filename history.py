@@ -23,6 +23,7 @@ datasets = dict(
 
 # list all the valid metrics
 metrics = dict(
+    unc=('UNC', None),
     dkn=('HGR-KB', DoubleKernelHGR()),
     skn=('HGR-SK', SingleKernelHGR()),
     adv=('HGR-NN', AdversarialHGR())
@@ -44,24 +45,17 @@ parser.add_argument(
     '-m',
     '--metrics',
     type=str,
-    nargs='*',
+    nargs='+',
     choices=list(metrics),
     default=list(metrics),
     help='the metrics used as penalties'
 )
 parser.add_argument(
-    '-a',
-    '--alpha',
+    '-s',
+    '--split',
     type=float,
-    nargs='?',
-    help='the alpha value used in the experiments'
-)
-parser.add_argument(
-    '-k',
-    '--folds',
-    type=int,
-    default=5,
-    help='the number of folds to be used for cross-validation'
+    default=0.3,
+    help='the train/test split value'
 )
 parser.add_argument(
     '--full-batch',

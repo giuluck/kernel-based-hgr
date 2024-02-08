@@ -17,8 +17,7 @@ from tqdm import tqdm
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History, \
-    Correlation
+from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History
 
 PALETTE: List[str] = [
     '#000000',
@@ -36,6 +35,9 @@ PALETTE: List[str] = [
 
 SEED: int = 0
 """The random seed used in the experiment."""
+
+ALPHA: Optional[float] = None
+"""The alpha value used in the experiment."""
 
 MINI_BATCH: int = 512
 """The size of a mini batch."""
@@ -55,17 +57,11 @@ class LearningExperiment(Experiment):
     dataset: Dataset = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The dataset used in the experiment."""
 
-    fold: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The fold that is used for training the model."""
-
-    folds: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The number of folds for k-fold cross-validation."""
+    split: float = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The train/test split value."""
 
     metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The metric to be used as penalty, or None for unconstrained model."""
-
-    alpha: Optional[float] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The alpha value for the penalizer."""
 
     units: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of hidden units used to build the neural model, or None to use the dataset default value."""
@@ -79,13 +75,10 @@ class LearningExperiment(Experiment):
     wandb_project: Optional[str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The name of the Weights & Biases project for logging, or None for no logging."""
 
-    def __post_init__(self):
-        assert self.metric is not None or self.alpha is None, "If metric=None, alpha must be None as well."
-
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
         # retrieve train and validation data from splits and set parameters
-        trn, val = self.dataset.data(folds=self.folds, seed=SEED)[self.fold]
+        trn, val = self.dataset.data(split=self.split, seed=SEED)
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
         val_data = Data(x=val[self.dataset.input_names], y=val[self.dataset.target_name])
         # build model
@@ -95,7 +88,7 @@ class LearningExperiment(Experiment):
             classification=self.dataset.classification,
             feature=self.dataset.excluded_index,
             metric=self.metric,
-            alpha=self.alpha
+            alpha=ALPHA
         )
         # build trainer and callback
         logger = InternalLogger()
@@ -153,10 +146,8 @@ class LearningExperiment(Experiment):
         return dict(
             experiment=self.name,
             dataset=self.dataset.configuration,
-            fold=self.fold,
-            folds=self.folds,
+            split=self.split,
             metric={'name': 'unconstrained'} if self.metric is None else self.metric.configuration,
-            alpha=self.alpha,
             units=self.units,
             batch=self.batch,
             epochs=self.epochs
@@ -165,19 +156,19 @@ class LearningExperiment(Experiment):
     @property
     def key(self) -> str:
         metric = None if self.metric is None else self.metric.key
-        return (f'{self.name}_{self.dataset.key}_{metric}_{self.alpha}_{self.units}_{self.batch}_{self.epochs}_'
-                f'{self.fold}_{self.folds}')
+        return f'{self.name}_{self.dataset.key}_{self.split}_{metric}_{self.units}_{self.batch}_{self.epochs}'
 
     @staticmethod
     def calibration(datasets: Dict[str, Dataset],
                     batches: Iterable[int] = (-1, 128, 512),
                     units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
+                    split: float = 0.3,
                     wandb_project: Optional[str] = None,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
-        def configuration(ds, bt, un, fl):
+        def configuration(ds, bt, un):
             classification = datasets[ds].classification
-            return dict(dataset=ds, batch=bt, units=un, fold=fl), [
+            return dict(dataset=ds, batch=bt, units=un), [
                 Loss(classification=classification),
                 Accuracy(classification=classification)
             ]
@@ -190,11 +181,9 @@ class LearningExperiment(Experiment):
             dataset=datasets,
             batch={str(b): b for b in batches},
             units={str(u): u for u in units},
-            fold=[0, 1, 2],
-            folds=3,
+            split=split,
             epochs=300,
             metric=None,
-            alpha=None,
             wandb_project=wandb_project
         )
         # get metric results and add time
@@ -248,24 +237,22 @@ class LearningExperiment(Experiment):
 
     @staticmethod
     def history(datasets: Dict[str, Dataset],
-                metrics: Dict[str, HGR],
-                alpha: Optional[float] = None,
+                metrics: Dict[str, Optional[HGR]],
                 full_batch: bool = True,
-                folds: int = 5,
+                split: float = 0.3,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
-        def configuration(ds, mt, fl):
+        def configuration(ds, mt):
             d = datasets[ds]
-            return dict(dataset=ds, metric=mt, fold=fl), [
+            return dict(dataset=ds, metric=mt), [
                 Loss(classification=d.classification),
                 Accuracy(classification=d.classification),
-                Correlation(excluded=d.excluded_index, algorithm='kb'),
-                Correlation(excluded=d.excluded_index, algorithm='nn')
+                # TODO: Correlation(excluded=d.excluded_index, algorithm='kb'),
+                # TODO: Correlation(excluded=d.excluded_index, algorithm='nn')
             ]
 
         # run experiments
-        metrics = {'UNC': None, **metrics}
         epochs, batch = (FULL_EPOCHS, -1) if full_batch else (MINI_EPOCHS, MINI_BATCH)
         experiments = LearningExperiment.doe(
             file_name='learning',
@@ -273,9 +260,7 @@ class LearningExperiment(Experiment):
             verbose=True,
             dataset=datasets,
             metric=metrics,
-            fold=list(range(folds)),
-            folds=folds,
-            alpha=alpha,
+            split=split,
             units=None,
             epochs=epochs,
             batch=batch,

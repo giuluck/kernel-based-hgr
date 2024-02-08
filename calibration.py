@@ -52,6 +52,13 @@ parser.add_argument(
     help='the hidden units used in the experiment'
 )
 parser.add_argument(
+    '-s',
+    '--split',
+    type=float,
+    default=0.3,
+    help='the train/test split value'
+)
+parser.add_argument(
     '-wp',
     '--wandb-project',
     type=str,

@@ -34,8 +34,7 @@ class Communities(Dataset):
 
     @property
     def excluded_name(self) -> str:
-        # TODO: return 'pctWhite'
-        return 'pctBlack'
+        return 'pctWhite'
 
     @property
     def surrogate_name(self) -> Optional[str]:
