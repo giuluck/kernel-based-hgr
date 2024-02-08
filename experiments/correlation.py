@@ -1,4 +1,5 @@
 import importlib.resources
+import os.path
 import pickle
 import time
 from dataclasses import dataclass, field
@@ -53,13 +54,16 @@ class CorrelationExperiment(Experiment):
         gap = time.time() - start
         # store external files only for NN kernels, in the other cases include the additional results in the object
         if isinstance(self.metric, AdversarialHGR):
-            external = f'{self.key}.pkl'
-            with importlib.resources.path('experiments.results', external) as path:
+            external = os.path.join('correlation', f'{self.key}.pkl')
+            with importlib.resources.files('experiments.results') as folder:
+                filepath = os.path.join(folder, external)
                 # overwrite files rather than asserting that they are not present since an abrupt interruption of the
                 # DoE might cause leaking external files to be stored while the original results are not
-                if path.exists():
+                if os.path.exists(filepath):
                     print(f"Overwriting file '{self.key}' since it is already present in package 'experiments.results'")
-            with open(path, 'wb') as file:
+                else:
+                    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, 'wb') as file:
                 pickle.dump(additional, file=file)
             return Experiment.Result(timestamp=start, execution=gap, external=external, correlation=hgr)
         else:
@@ -122,7 +126,7 @@ class CorrelationExperiment(Experiment):
             ax.set_yticks(np.arange(len(degrees_b) + 1) - 0.5)
             ax.set_yticklabels([''] * (len(degrees_b) + 1))
             ax.set_yticks(np.arange(len(degrees_b)), minor=True)
-            ax.set_yticklabels(degrees_b, minor=True)
+            ax.set_yticklabels(degrees_b[::-1], minor=True)
             ax.grid(True, which='major')
             # store, print, and plot if necessary
             for extension in formats:

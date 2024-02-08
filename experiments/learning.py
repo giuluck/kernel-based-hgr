@@ -1,4 +1,5 @@
 import importlib.resources
+import os
 import pickle
 import time
 from dataclasses import dataclass, field
@@ -125,10 +126,11 @@ class LearningExperiment(Experiment):
         if self.wandb_project is not None:
             wandb.finish()
         # store external files and return result
-        external = f'{self.key}.pkl'
-        with importlib.resources.path('experiments.results', external) as path:
-            assert not path.exists(), f"Experiment '{self.key}' is already present in package 'experiments.results'"
-            with open(path, 'wb') as file:
+        external = os.path.join('learning', f'{self.key}.pkl')
+        with importlib.resources.files('experiments.results') as folder:
+            filepath = os.path.join(folder, external)
+            assert not os.path.exists(filepath), f"Experiment '{self.key}' is already present in 'experiments.results'"
+            with open(filepath, 'wb') as file:
                 pickle.dump({
                     'train_inputs': trn_data.x,
                     'train_target': trn_data.y,
@@ -341,8 +343,9 @@ class LearningExperiment(Experiment):
                  configuration: Callable[[tuple], Tuple[Dict[str, Any], Iterable[Metric]]]) -> pd.DataFrame:
         results = []
         for index, experiment in experiments.items():
-            with importlib.resources.open_binary('experiments.results', experiment.result.external) as file:
-                ext = pickle.load(file=file)
+            with importlib.resources.files('experiments.results') as folder:
+                with open(os.path.join(folder, experiment.result.external), 'rb') as file:
+                    ext = pickle.load(file=file)
             # retrieve input data
             xtr = ext['train_inputs'].numpy(force=True)
             ytr = ext['train_target'].numpy(force=True).flatten()
@@ -379,7 +382,9 @@ class LearningExperiment(Experiment):
                             outputs[f'{split}_{mtr.name}'].append(value)
                             results.append({**info, 'kpi': mtr.name, 'split': split.title(), 'value': value})
                 ext.update(outputs)
-                with importlib.resources.path('experiments.results', experiment.result.external) as filepath:
+                with importlib.resources.files('experiments.results') as folder:
+                    filepath = os.path.join(folder, experiment.result.external)
+                    os.makedirs(os.path.dirname(filepath), exist_ok=True)
                     with open(filepath, 'wb') as file:
                         pickle.dump(ext, file=file)
         return pd.DataFrame(results)

@@ -10,12 +10,6 @@ from scipy.stats import pearsonr
 
 from src.hgr import KernelsHGR
 
-DEGREE: int = 7
-"""Default degree for kernel-based metrics."""
-
-LASSO: float = 0.0
-"""The amount of lasso regularization."""
-
 TOL: float = 1e-2
 """The tolerance used when checking for linear dependencies."""
 
@@ -126,9 +120,9 @@ class KernelBasedHGR(KernelsHGR):
             diff = f_slim @ alp - g_slim @ bet
             obj_func = diff @ diff
             obj_grad = 2 * fg.T @ diff
-            pen_func = np.abs(inp).sum()
-            pen_grad = np.sign(inp)
-            return obj_func + LASSO * pen_func, obj_grad + LASSO * pen_grad
+            # pen_func = np.abs(inp).sum()
+            # pen_grad = np.sign(inp)
+            return obj_func, obj_grad
 
         fun_hess = 2 * fg.T @ fg
 
@@ -245,8 +239,8 @@ class KernelBasedHGR(KernelsHGR):
 class DoubleKernelHGR(KernelBasedHGR):
     """Kernel-based HGR computed by solving a constrained least square problem using a minimization solver."""
 
-    degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
-    degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
+    degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
+    degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
 
     @property
     def name(self) -> str:
@@ -288,7 +282,7 @@ class DoubleKernelHGR(KernelBasedHGR):
 class SingleKernelHGR(KernelBasedHGR):
     """Kernel-based HGR computed using one kernel only for both variables and then taking the maximal correlation."""
 
-    degree: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
+    degree: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
     """The kernel degree for the variables."""
 
     @property

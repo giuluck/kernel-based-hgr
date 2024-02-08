@@ -39,7 +39,7 @@ class Correlation(Metric):
             metric = DoubleKernelHGR(degree_a=1, degree_b=1)
             name = 'PEARSON'
         elif algorithm == 'kb':
-            metric = DoubleKernelHGR()
+            metric = DoubleKernelHGR(degree_a=5, degree_b=5)
             name = 'HGR-KB'
         elif algorithm == 'nn':
             metric = AdversarialHGR()

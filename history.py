@@ -24,8 +24,8 @@ datasets = dict(
 # list all the valid metrics
 metrics = dict(
     unc=('UNC', None),
-    dkn=('HGR-KB', DoubleKernelHGR()),
-    skn=('HGR-SK', SingleKernelHGR()),
+    dkn=('HGR-KB', DoubleKernelHGR(degree_a=5, degree_b=5)),
+    skn=('HGR-SK', SingleKernelHGR(degree=5)),
     adv=('HGR-NN', AdversarialHGR())
 )
 

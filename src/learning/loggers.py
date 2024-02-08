@@ -1,4 +1,5 @@
 import importlib.resources
+import os.path
 import pickle
 from argparse import Namespace
 from typing import Union, Dict, Any, Optional, List, Set
@@ -43,8 +44,12 @@ class History(pl.Callback):
         :param key:
             The key of the experiment.
         """
-        self.key: str = key
-        self.external: Set[str] = set()
+        self._key: str = key
+        self._external: Set[str] = set()
+
+    @property
+    def folder(self) -> str:
+        return os.path.join('learning', self._key)
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         results = dict(
@@ -52,17 +57,20 @@ class History(pl.Callback):
             val_predictions=pl_module(trainer.val_dataloaders.dataset.x),
             model_state=pl_module.state_dict()
         )
-        name = f'{self.key}_epoch-{trainer.current_epoch}.pkl'
-        with importlib.resources.path('experiments.results', name) as filepath:
+        with importlib.resources.files('experiments.results') as folder:
+            name = f'{self._key}_epoch-{trainer.current_epoch}.pkl'
+            filepath = os.path.join(folder, self.folder, name)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
             with open(filepath, 'wb') as file:
                 pickle.dump(results, file=file)
-        self.external.add(name)
+        self._external.add(name)
 
     def __getitem__(self, item: int) -> Dict[str, Any]:
-        name = f'{self.key}_epoch-{item}.pkl'
-        assert name in self.external, f"External results for experiment {self.key} are not available at epoch {item}"
-        with importlib.resources.open_binary('experiments.results', name) as file:
-            return pickle.load(file=file)
+        name = f'{self._key}_epoch-{item}.pkl'
+        assert name in self._external, f"External results for experiment {self._key} are not available at epoch {item}"
+        with importlib.resources.files('experiments.results') as folder:
+            with open(os.path.join(folder, self.folder, name), 'rb') as file:
+                return pickle.load(file=file)
 
 
 class Progress(pl.Callback):

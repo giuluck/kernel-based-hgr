@@ -28,8 +28,8 @@ datasets = dict(
 
 # list all the valid metrics
 metrics = dict(
-    dkn=('HGR-KB', DoubleKernelHGR()),
-    skn=('HGR-SK', SingleKernelHGR()),
+    dkn=('HGR-KB', DoubleKernelHGR(degree_a=7, degree_b=7)),
+    skn=('HGR-SK', SingleKernelHGR(degree=7)),
     adv=('HGR-NN', AdversarialHGR()),
     kde=('HGR-KDE', DensityHGR()),
     chi=('CHI^2', ChiSquare()),

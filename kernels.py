@@ -42,9 +42,9 @@ def metrics(key):
     if key == 'adv':
         return 'HGR-NN', AdversarialHGR()
     elif key == 'dkn':
-        return 'HGR-KB', DoubleKernelHGR()
+        return 'HGR-KB', DoubleKernelHGR(degree_a=7, degree_b=7)
     elif key == 'skn':
-        return 'HGR-SK', SingleKernelHGR()
+        return 'HGR-SK', SingleKernelHGR(degree=7)
     elif re.compile('dkn-([0-9]+)').match(key):
         degree = int(key[4:])
         return f'HGR-KB ({degree})', DoubleKernelHGR(degree_a=degree, degree_b=degree)
@@ -70,7 +70,7 @@ parser.add_argument(
     '--metrics',
     type=str,
     nargs='*',
-    default=['dkn-2', 'dkn', 'adv'],
+    default=['dkn-2', 'dkn-5', 'dkn', 'adv'],
     help='the metric used to compute the correlations'
 )
 parser.add_argument(

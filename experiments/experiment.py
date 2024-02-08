@@ -4,6 +4,7 @@ import itertools
 import os
 import pickle
 import re
+import shutil
 import time
 from abc import abstractmethod
 from dataclasses import dataclass
@@ -57,8 +58,9 @@ class Experiment(Cacheable):
             """The external kwargs."""
             if self._external is None:
                 return dict()
-            with importlib.resources.open_binary('experiments.results', self._external) as file:
-                return pickle.load(file=file)
+            with importlib.resources.files('experiments.results') as folder:
+                with open(os.path.join(folder, self._external), 'rb') as file:
+                    return pickle.load(file=file)
 
     @property
     @abstractmethod
@@ -88,10 +90,10 @@ class Experiment(Cacheable):
         their results in the given file every <save_time> seconds."""
         assert len(configuration) > 0, "Empty configuration passed"
         # retrieve the path of the results and load the pickle dictionary if the file exists
-        with importlib.resources.path('experiments.results', f'{file_name}.pkl') as path:
+        with importlib.resources.path('experiments.results', f'{file_name}.pkl') as filepath:
             pass
-        if path.exists():
-            with open(path, 'rb') as file:
+        if filepath.exists():
+            with open(filepath, 'rb') as file:
                 results = pickle.load(file=file)
         else:
             results = {}
@@ -151,7 +153,7 @@ class Experiment(Cacheable):
                 if time.time() - gap >= save_time:
                     # dump the file before writing to check if it is pickle-compliant
                     dump = pickle.dumps(results)
-                    with open(path, 'wb') as file:
+                    with open(filepath, 'wb') as file:
                         file.write(dump)
                     gap = time.time()
                     to_save = False
@@ -170,7 +172,7 @@ class Experiment(Cacheable):
         if to_save:
             # dump the file before writing to check if it is pickle-compliant
             dump = pickle.dumps(results)
-            with open(path, 'wb') as file:
+            with open(filepath, 'wb') as file:
                 file.write(dump)
         return experiments
 
@@ -191,17 +193,18 @@ class Experiment(Cacheable):
         # iterate over all the files
         for filename in file:
             # if it does not exist, there is nothing to clear
-            path = os.path.join(folder, f'{filename}.pkl')
-            if not os.path.exists(path):
+            filepath = os.path.join(folder, f'{filename}.pkl')
+            if not os.path.exists(filepath):
                 continue
             # otherwise, retrieve the dictionary of results
-            with open(path, 'rb') as file:
+            with open(filepath, 'rb') as file:
                 results = pickle.load(file=file)
             print(f"Retrieved {len(results)} experiments from '{filename}.pkl'")
             # build a dictionary of results to keep
             # a result must if there is at least a non-null matcher that does not match
             output = {}
             externals = []
+            histories = []
             for idx, res in results.items():
                 if datasets is not None and res['dataset']['name'] not in datasets:
                     # print(f"LEAVE: '{idx}' from '{filename}.pkl' (unmatch dataset '{res['dataset']['name']}')")
@@ -223,9 +226,9 @@ class Experiment(Cacheable):
                     # -------------------------------------------------------------------------------------
                     # QUICK PATCH TO MULTIPLE EXTERNAL FILES IN HISTORY CALLBACK FOR LEARNING EXPERIMENTS
                     if res['experiment'] == 'learning':
-                        histories = res['result']['history'].external
-                        externals.extend(histories)
-                        print(f' (plus {len(histories)} history files)', end='')
+                        history = res['result']['history'].folder
+                        histories.append(history)
+                        print(f" (plus history files in {history})", end='')
                     # -------------------------------------------------------------------------------------
                     print()
             if not force:
@@ -240,10 +243,12 @@ class Experiment(Cacheable):
                 print(f"Removed {len(results) - len(output)} experiments from '{filename}.pkl ({len(output)} left)\n")
             # dump the file before writing to check if it is pickle-compliant
             dump = pickle.dumps(output)
-            with open(path, 'wb') as file:
+            with open(filepath, 'wb') as file:
                 file.write(dump)
             for external in externals:
                 os.remove(os.path.join(folder, external))
+            for history in histories:
+                shutil.rmtree(os.path.join(folder, history))
 
     @staticmethod
     def clear_exports():
