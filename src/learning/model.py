@@ -14,7 +14,7 @@ from src.hgr.adv import Net_HGR, Net2_HGR, EPOCHS
 class MultiLayerPerceptron(pl.LightningModule):
     """Template class for a Multi-layer Perceptron in Pytorch Lightning."""
 
-    THRESHOLD: float = 0.2
+    THRESHOLD: float = 0.4  # TODO: set correct threshold
     """The threshold to be imposed in the penalty."""
 
     def __init__(self,
@@ -144,6 +144,6 @@ class MultiLayerPerceptron(pl.LightningModule):
         """Configures the optimizer for the MLP depending on whether there is a variable alpha or not."""
         if isinstance(self.alpha, Variable):
             # noinspection PyTypeChecker
-            return Adam(params=self.model.parameters()), Adam(params=[self.alpha])
+            return Adam(params=self.model.parameters(), lr=1e-3), Adam(params=[self.alpha], lr=1e-3)
         else:
-            return Adam(params=self.model.parameters())
+            return Adam(params=self.model.parameters(), lr=1e-3)

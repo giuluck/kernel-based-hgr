@@ -3,7 +3,7 @@ import os
 import pickle
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any, List, Iterable, Callable, Tuple
+from typing import Dict, Optional, Any, List, Iterable, Callable, Tuple, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,7 +18,8 @@ from tqdm import tqdm
 from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import HGR
-from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History
+from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History, \
+    Correlation
 
 PALETTE: List[str] = [
     '#000000',
@@ -43,10 +44,10 @@ ALPHA: Optional[float] = None
 MINI_BATCH: int = 512
 """The size of a mini batch."""
 
-MINI_EPOCHS: int = 100
+MINI_EPOCHS: int = 20  # TODO: 100
 """The number of epochs used during training with mini batches."""
 
-FULL_EPOCHS: int = 300
+FULL_EPOCHS: int = 20  # TODO: 300
 """The number of epochs used during training full batch."""
 
 
@@ -164,6 +165,7 @@ class LearningExperiment(Experiment):
     def calibration(datasets: Dict[str, Dataset],
                     batches: Iterable[int] = (-1, 128, 512),
                     units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
+                    epochs: int = 300,
                     split: float = 0.3,
                     wandb_project: Optional[str] = None,
                     formats: Iterable[str] = ('png',),
@@ -184,7 +186,7 @@ class LearningExperiment(Experiment):
             batch={str(b): b for b in batches},
             units={str(u): u for u in units},
             split=split,
-            epochs=300,
+            epochs=epochs,
             metric=None,
             wandb_project=wandb_project
         )
@@ -240,68 +242,73 @@ class LearningExperiment(Experiment):
     @staticmethod
     def history(datasets: Dict[str, Dataset],
                 metrics: Dict[str, Optional[HGR]],
-                full_batch: bool = True,
+                batches: Literal['mini', 'full', 'both'] = 'both',
                 split: float = 0.3,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
-        def configuration(ds, mt):
+        def configuration(ds, mt, bt):
             d = datasets[ds]
-            return dict(dataset=ds, metric=mt), [
+            return dict(dataset=ds, metric=mt, batch=bt), [
                 Loss(classification=d.classification),
                 Accuracy(classification=d.classification),
-                # TODO: Correlation(excluded=d.excluded_index, algorithm='kb'),
-                # TODO: Correlation(excluded=d.excluded_index, algorithm='nn')
+                Correlation(excluded=d.excluded_index, algorithm='sk')
             ]
 
-        # run experiments
-        epochs, batch = (FULL_EPOCHS, -1) if full_batch else (MINI_EPOCHS, MINI_BATCH)
-        experiments = LearningExperiment.doe(
-            file_name='learning',
-            save_time=0,
-            verbose=True,
-            dataset=datasets,
-            metric=metrics,
-            split=split,
-            units=None,
-            epochs=epochs,
-            batch=batch,
-            wandb_project=wandb_project
-        )
-        # get and plot metric results
-        results = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
+        batch_kinds = {}
+        if batches in ['full', 'both']:
+            batch_kinds['full'] = (FULL_EPOCHS, -1)
+        if batches in ['mini', 'both']:
+            batch_kinds['mini'] = (MINI_EPOCHS, MINI_BATCH)
         sns.set_context('notebook')
         sns.set_style('whitegrid')
-        for dataset in datasets.keys():
-            group = results[results['dataset'] == dataset]
-            kpis = group['kpi'].unique()
-            col = len(kpis)
-            fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
-            for i, split in enumerate(['Train', 'Val']):
-                for j, kpi in enumerate(kpis):
-                    sns.lineplot(
-                        data=group[np.logical_and(group['split'] == split, group['kpi'] == kpi)],
-                        x='epoch',
-                        y='value',
-                        estimator='mean',
-                        errorbar='sd',
-                        linewidth=2,
-                        hue='metric',
-                        style='metric',
-                        palette=PALETTE[:len(metrics)],
-                        ax=axes[i, j]
-                    )
-                    axes[i, j].set_ylabel(f'{split} {kpi}')
-                    axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
-            # store, print, and plot if necessary
-            for extension in formats:
-                name = f'history_{dataset}_{full_batch}.{extension}'
-                with importlib.resources.path('experiments.exports', name) as file:
-                    fig.savefig(file, bbox_inches='tight')
-            if plot:
-                fig.suptitle(f"Learning History for {dataset.title()} ({'Full' if full_batch else 'Mini'} Batch)")
-                fig.show()
-            plt.close(fig)
+        experiments: Dict[Any, LearningExperiment] = {}
+        # iterate over dataset and batches
+        for name, dataset in datasets.items():
+            for kind, (epochs, batch) in batch_kinds.items():
+                # use dictionaries for dataset and batch to retrieve correct configuration
+                group = LearningExperiment.doe(
+                    file_name='learning',
+                    save_time=0,
+                    verbose=True,
+                    dataset={name: dataset},
+                    metric=metrics,
+                    split=split,
+                    units=None,
+                    epochs=epochs,
+                    batch={kind: batch},
+                    wandb_project=wandb_project
+                )
+                experiments.update(group)
+                # get and plot metric results
+                group = LearningExperiment._metrics(experiments=group, configuration=configuration)
+                kpis = group['kpi'].unique()
+                col = len(kpis)
+                fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
+                for i, sp in enumerate(['Train', 'Val']):
+                    for j, kpi in enumerate(kpis):
+                        sns.lineplot(
+                            data=group[np.logical_and(group['split'] == sp, group['kpi'] == kpi)],
+                            x='epoch',
+                            y='value',
+                            estimator='mean',
+                            errorbar='sd',
+                            linewidth=2,
+                            hue='metric',
+                            style='metric',
+                            palette=PALETTE[:len(metrics)],
+                            ax=axes[i, j]
+                        )
+                        axes[i, j].set_title(f'{sp} {kpi}')
+                        axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
+                # store, print, and plot if necessary
+                for extension in formats:
+                    with importlib.resources.path('experiments.exports', f'history_{name}_{kind}.{extension}') as file:
+                        fig.savefig(file, bbox_inches='tight')
+                if plot:
+                    fig.suptitle(f"Learning History for {name.title()} ({kind.title()} Batch)")
+                    fig.show()
+                plt.close(fig)
         # get and plot history results
         history = []
         for index, experiment in experiments.items():
@@ -330,11 +337,11 @@ class LearningExperiment(Experiment):
                 axes[i, j].set_ylabel(f'{dataset} {kpi}')
         # store, print, and plot if necessary
         for extension in formats:
-            name = f'history_outputs_{full_batch}.{extension}'
+            name = f'history_outputs.{extension}'
             with importlib.resources.path('experiments.exports', name) as file:
                 fig.savefig(file, bbox_inches='tight')
         if plot:
-            fig.suptitle(f"Learning History Outputs for ({'Full' if full_batch else 'Mini'} Batch)")
+            fig.suptitle(f"Learning History Outputs")
             fig.show()
         plt.close(fig)
 

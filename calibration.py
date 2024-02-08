@@ -52,6 +52,13 @@ parser.add_argument(
     help='the hidden units used in the experiment'
 )
 parser.add_argument(
+    '-e',
+    '--epochs',
+    type=int,
+    default=300,
+    help='the number of epochs to run for each network'
+)
+parser.add_argument(
     '-s',
     '--split',
     type=float,

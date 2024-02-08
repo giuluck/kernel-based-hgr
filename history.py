@@ -4,7 +4,7 @@ import os
 import warnings
 
 from experiments import LearningExperiment
-from src.datasets import Communities, Adult
+from src.datasets import Communities, Adult, Census
 from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -18,14 +18,15 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
 # list all the valid datasets
 datasets = dict(
     communities=Communities(),
-    adult=Adult()
+    adult=Adult(),
+    census=Census()
 )
 
 # list all the valid metrics
 metrics = dict(
     unc=('UNC', None),
-    dkn=('HGR-KB', DoubleKernelHGR(degree_a=5, degree_b=5)),
     skn=('HGR-SK', SingleKernelHGR(degree=5)),
+    dkn=('HGR-KB', DoubleKernelHGR(degree_a=5, degree_b=5)),
     adv=('HGR-NN', AdversarialHGR())
 )
 
@@ -38,7 +39,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=['communities'],
+    default=list(datasets),
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(
@@ -58,9 +59,12 @@ parser.add_argument(
     help='the train/test split value'
 )
 parser.add_argument(
-    '--full-batch',
-    action='store_true',
-    help='whether to train the networks full batch or with mini batches'
+    '-b',
+    '--batches',
+    type=str,
+    choices=['mini', 'full', 'both'],
+    default='both',
+    help='whether to train the networks with mini batches, full batch, or both'
 )
 parser.add_argument(
     '-wp',

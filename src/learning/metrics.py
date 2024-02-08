@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from sklearn.metrics import mean_squared_error, log_loss, r2_score, roc_auc_score
 
-from src.hgr import HGR, DoubleKernelHGR, AdversarialHGR, DensityHGR
+from src.hgr import HGR, DoubleKernelHGR, AdversarialHGR, DensityHGR, SingleKernelHGR
 
 
 class Metric:
@@ -38,7 +38,10 @@ class Correlation(Metric):
         if algorithm == 'prs':
             metric = DoubleKernelHGR(degree_a=1, degree_b=1)
             name = 'PEARSON'
-        elif algorithm == 'kb':
+        elif algorithm == 'sk':
+            metric = SingleKernelHGR(degree=5)
+            name = 'HGR-SK'
+        elif algorithm == 'dk':
             metric = DoubleKernelHGR(degree_a=5, degree_b=5)
             name = 'HGR-KB'
         elif algorithm == 'nn':
@@ -54,7 +57,7 @@ class Correlation(Metric):
         super(Correlation, self).__init__(name=name)
 
     def __call__(self, x: np.ndarray, y: np.ndarray, p: np.ndarray) -> torch.Tensor:
-        return self._metric.correlation(a=x[:, self._excluded], b=y)[0]
+        return self._metric.correlation(a=x[:, self._excluded], b=p)[0]
 
 
 class Loss(Metric):
