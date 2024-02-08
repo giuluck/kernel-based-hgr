@@ -54,7 +54,7 @@ class Correlation(Metric):
         super(Correlation, self).__init__(name=name)
 
     def __call__(self, x: np.ndarray, y: np.ndarray, p: np.ndarray) -> torch.Tensor:
-        return self._metric.correlation(a=x[:, self._excluded], b=y)
+        return self._metric.correlation(a=x[:, self._excluded], b=y)[0]
 
 
 class Loss(Metric):

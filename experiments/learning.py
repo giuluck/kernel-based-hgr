@@ -373,8 +373,11 @@ class LearningExperiment(Experiment):
             if np.all([len(v) == experiment.epochs for v in outputs.values()]):
                 print(f'Fetching Metrics for {experiment.key}')
                 df = pd.DataFrame(outputs).melt()
-                df['split'] = df['variable'].map(lambda v: v.split('_')[0])
+                df['split'] = df['variable'].map(lambda v: v.split('_')[0].title())
                 df['kpi'] = df['variable'].map(lambda v: v.split('_')[1])
+                df['epoch'] = list(range(experiment.epochs)) * len(outputs)
+                for key, value in info.items():
+                    df[key] = value
                 df = df.drop(columns='variable').to_dict(orient='records')
                 results.extend(df)
             # otherwise, compute and re-serialize them
