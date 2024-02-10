@@ -60,7 +60,7 @@ class CorrelationExperiment(Experiment):
                 # overwrite files rather than asserting that they are not present since an abrupt interruption of the
                 # DoE might cause leaking external files to be stored while the original results are not
                 if os.path.exists(filepath):
-                    print(f"Overwriting file '{self.key}' since it is already present in package 'experiments.results'")
+                    print(f"WARNING: overwriting file '{self.key}' since it is already in 'experiments.results'")
                 else:
                     os.makedirs(os.path.dirname(filepath), exist_ok=True)
             with open(filepath, 'wb') as file:

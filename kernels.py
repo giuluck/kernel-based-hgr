@@ -39,16 +39,16 @@ def datasets(key, noise):
 
 # function to retrieve the valid metric
 def metrics(key):
-    if key == 'adv':
+    if key == 'nn':
         return 'HGR-NN', AdversarialHGR()
-    elif key == 'dkn':
+    elif key == 'kb':
         return 'HGR-KB', DoubleKernelHGR(degree_a=7, degree_b=7)
-    elif key == 'skn':
+    elif key == 'sk':
         return 'HGR-SK', SingleKernelHGR(degree=7)
-    elif re.compile('dkn-([0-9]+)').match(key):
+    elif re.compile('kb-([0-9]+)').match(key):
         degree = int(key[4:])
         return f'HGR-KB ({degree})', DoubleKernelHGR(degree_a=degree, degree_b=degree)
-    elif re.compile('skn-([0-9]+)').match(key):
+    elif re.compile('sk-([0-9]+)').match(key):
         degree = int(key[4:])
         return f'HGR-SK ({degree})', SingleKernelHGR(degree=degree)
     else:
@@ -70,7 +70,7 @@ parser.add_argument(
     '--metrics',
     type=str,
     nargs='*',
-    default=['dkn-2', 'dkn-5', 'dkn', 'adv'],
+    default=['kb-2', 'kb', 'nn'],
     help='the metric used to compute the correlations'
 )
 parser.add_argument(

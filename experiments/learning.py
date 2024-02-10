@@ -20,6 +20,7 @@ from src.datasets import Dataset
 from src.hgr import HGR
 from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History, \
     Correlation
+from src.learning.metrics import DIDI
 
 PALETTE: List[str] = [
     '#000000',
@@ -44,10 +45,10 @@ ALPHA: Optional[float] = None
 MINI_BATCH: int = 512
 """The size of a mini batch."""
 
-MINI_EPOCHS: int = 20  # TODO: 100
+MINI_EPOCHS: int = 200
 """The number of epochs used during training with mini batches."""
 
-FULL_EPOCHS: int = 20  # TODO: 300
+FULL_EPOCHS: int = 500
 """The number of epochs used during training full batch."""
 
 
@@ -90,7 +91,7 @@ class LearningExperiment(Experiment):
             classification=self.dataset.classification,
             feature=self.dataset.excluded_index,
             metric=self.metric,
-            alpha=ALPHA
+            alpha=None if self.metric is None else ALPHA
         )
         # build trainer and callback
         logger = InternalLogger()
@@ -119,8 +120,8 @@ class LearningExperiment(Experiment):
         batch_size = len(trn) if self.batch == -1 else self.batch
         trainer.fit(
             model=model,
-            train_dataloaders=DataLoader(trn_data, batch_size=batch_size),
-            val_dataloaders=DataLoader(val_data, batch_size=len(val))
+            train_dataloaders=DataLoader(trn_data, batch_size=batch_size, shuffle=True),
+            val_dataloaders=DataLoader(val_data, batch_size=len(val), shuffle=False)
         )
         gap = time.time() - start
         # close wandb in case it was used in the logger
@@ -247,27 +248,34 @@ class LearningExperiment(Experiment):
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
-        def configuration(ds, mt, bt):
+        def configuration(ds, mt):
             d = datasets[ds]
-            return dict(dataset=ds, metric=mt, batch=bt), [
+            # include the DIDI on surrogate excluded index only if present
+            s = [] if d.surrogate_name is None else [DIDI(
+                excluded=d.surrogate_index,
+                classification=d.classification,
+                name=f'Surrogate DIDI'
+            )]
+            # return a list of metrics for loss, accuracy, correlation, and optionally surrogate fairness
+            return dict(dataset=ds, metric=mt), [
                 Loss(classification=d.classification),
                 Accuracy(classification=d.classification),
-                Correlation(excluded=d.excluded_index, algorithm='sk')
+                Correlation(excluded=d.excluded_index, algorithm='sk', name=f'Protected HGR'),
+                *s
             ]
 
         batch_kinds = {}
-        if batches in ['full', 'both']:
-            batch_kinds['full'] = (FULL_EPOCHS, -1)
         if batches in ['mini', 'both']:
             batch_kinds['mini'] = (MINI_EPOCHS, MINI_BATCH)
+        if batches in ['full', 'both']:
+            batch_kinds['full'] = (FULL_EPOCHS, -1)
         sns.set_context('notebook')
         sns.set_style('whitegrid')
-        experiments: Dict[Any, LearningExperiment] = {}
         # iterate over dataset and batches
         for name, dataset in datasets.items():
             for kind, (epochs, batch) in batch_kinds.items():
-                # use dictionaries for dataset and batch to retrieve correct configuration
-                group = LearningExperiment.doe(
+                # use dictionaries for dataset to retrieve correct configuration
+                experiments = LearningExperiment.doe(
                     file_name='learning',
                     save_time=0,
                     verbose=True,
@@ -276,15 +284,14 @@ class LearningExperiment(Experiment):
                     split=split,
                     units=None,
                     epochs=epochs,
-                    batch={kind: batch},
+                    batch=batch,
                     wandb_project=wandb_project
                 )
-                experiments.update(group)
                 # get and plot metric results
-                group = LearningExperiment._metrics(experiments=group, configuration=configuration)
+                group = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
                 kpis = group['kpi'].unique()
-                col = len(kpis)
-                fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey='col', tight_layout=True)
+                col = len(kpis) + 1
+                fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey=None, tight_layout=True)
                 for i, sp in enumerate(['Train', 'Val']):
                     for j, kpi in enumerate(kpis):
                         sns.lineplot(
@@ -299,8 +306,52 @@ class LearningExperiment(Experiment):
                             palette=PALETTE[:len(metrics)],
                             ax=axes[i, j]
                         )
-                        axes[i, j].set_title(f'{sp} {kpi}')
-                        axes[i, j].set_ylim((0, None if kpi in ['MSE', 'BCE'] else 1))
+                        axes[i, j].set_title(f"{kpi} ({sp.lower()})")
+                        if i == 1:
+                            ub = axes[1, j].get_ylim()[1] if kpi == 'MSE' or kpi == 'BCE' or 'DIDI' in kpi else 1
+                            axes[0, j].set_ylim((0, ub))
+                            axes[1, j].set_ylim((0, ub))
+                # get and plot history results (alpha and time)
+                history = []
+                to_remove = []
+                for (_, mtr), experiment in experiments.items():
+                    result = experiment.result
+                    times = result['time']
+                    if experiment.metric is None:
+                        alphas = [np.nan] * len(result['alpha'])
+                        to_remove.append(mtr)
+                    else:
+                        alphas = result['alpha']
+                    history.extend([{
+                        'metric': mtr,
+                        'epoch': epoch,
+                        'Training Time (s)': times[epoch],
+                        'Lambda Weight': alphas[epoch]
+                    } for epoch in range(experiment.epochs)])
+                history = pd.DataFrame(history)
+                for i, col in enumerate(['Training Time (s)', 'Lambda Weight']):
+                    sns.lineplot(
+                        data=history,
+                        x='epoch',
+                        y=col,
+                        estimator='mean',
+                        errorbar='sd',
+                        linewidth=2,
+                        hue='metric',
+                        style='metric',
+                        palette=PALETTE[:len(metrics)],
+                        ax=axes[i, -1]
+                    )
+                    axes[i, -1].set_title(col)
+                    axes[i, -1].set_ylabel(None)
+                # QUICK PATCH TO REMOVE UNCONSTRAINED EXPERIMENTS FROM ALPHA LEGEND
+                leg = axes[1, -1].legend()
+                for handle, text in zip(leg.legendHandles, leg.texts):
+                    # noinspection PyProtectedMember
+                    if handle._label in to_remove and text._text in to_remove:
+                        handle.set_visible(False)
+                        text.set_visible(False)
+                leg.set_title('metric')
                 # store, print, and plot if necessary
                 for extension in formats:
                     with importlib.resources.path('experiments.exports', f'history_{name}_{kind}.{extension}') as file:
@@ -309,41 +360,6 @@ class LearningExperiment(Experiment):
                     fig.suptitle(f"Learning History for {name.title()} ({kind.title()} Batch)")
                     fig.show()
                 plt.close(fig)
-        # get and plot history results
-        history = []
-        for index, experiment in experiments.items():
-            info, _ = configuration(*index)
-            for epoch in range(experiment.epochs):
-                history.append({**info, 'epoch': epoch, 'kpi': 'alpha', 'value': experiment.result['alpha'][epoch]})
-                history.append({**info, 'epoch': epoch, 'kpi': 'time', 'value': experiment.result['time'][epoch]})
-        history = pd.DataFrame(history)
-        row = len(datasets)
-        fig, axes = plt.subplots(row, 2, figsize=(10, 4 * row), sharex='all', sharey=None, tight_layout=True)
-        axes = np.array(axes).reshape(row, 2)
-        for i, dataset in enumerate(datasets.keys()):
-            for j, kpi in enumerate(['alpha', 'time']):
-                sns.lineplot(
-                    data=history[np.logical_and(history['dataset'] == dataset, history['kpi'] == kpi)],
-                    x='epoch',
-                    y='value',
-                    estimator='mean',
-                    errorbar='sd',
-                    linewidth=2,
-                    hue='metric',
-                    style='metric',
-                    palette=PALETTE[:len(metrics)],
-                    ax=axes[i, j]
-                )
-                axes[i, j].set_ylabel(f'{dataset} {kpi}')
-        # store, print, and plot if necessary
-        for extension in formats:
-            name = f'history_outputs.{extension}'
-            with importlib.resources.path('experiments.exports', name) as file:
-                fig.savefig(file, bbox_inches='tight')
-        if plot:
-            fig.suptitle(f"Learning History Outputs")
-            fig.show()
-        plt.close(fig)
 
     @staticmethod
     def _metrics(experiments: Dict[Any, 'LearningExperiment'],
@@ -377,7 +393,8 @@ class LearningExperiment(Experiment):
                 results.extend(df)
             # otherwise, compute and re-serialize them
             else:
-                assert np.all([len(v) == 0 for v in outputs.values()]), f"Serialized metrics error in {experiment.key}"
+                if not np.all([len(v) == 0 for v in outputs.values()]):
+                    print(f"WARNING: recomputing metrics for {experiment.key} due to possible serialization errors")
                 for epoch in tqdm(range(experiment.epochs), desc=f'Computing Metrics for {experiment.key}'):
                     info['epoch'] = epoch
                     hst = experiment.result['history'][epoch]

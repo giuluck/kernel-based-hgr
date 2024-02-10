@@ -78,14 +78,11 @@ class Progress(pl.Callback):
         self._pbar: Optional[tqdm] = None
 
     def on_train_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        self._pbar = tqdm(total=trainer.max_epochs * trainer.num_training_batches, desc='Model Training', unit='step')
+        self._pbar = tqdm(total=trainer.max_epochs, desc='Model Training', unit='step')
 
-    def on_train_batch_end(self,
-                           trainer: pl.Trainer,
-                           pl_module: pl.LightningModule,
-                           outputs: Dict[str, torch.Tensor],
-                           batch: Any,
-                           batch_idx: int) -> None:
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        desc = 'Model Training (' + ' - '.join([f'{k}: {v:.2f}' for k, v in trainer.logged_metrics.items()]) + ')'
+        self._pbar.set_description(desc=desc, refresh=True)
         self._pbar.update(n=1)
 
     def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):

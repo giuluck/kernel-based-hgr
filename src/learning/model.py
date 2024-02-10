@@ -14,7 +14,7 @@ from src.hgr.adv import Net_HGR, Net2_HGR, EPOCHS
 class MultiLayerPerceptron(pl.LightningModule):
     """Template class for a Multi-layer Perceptron in Pytorch Lightning."""
 
-    THRESHOLD: float = 0.4  # TODO: set correct threshold
+    THRESHOLD: float = 0.3
     """The threshold to be imposed in the penalty."""
 
     def __init__(self,
@@ -108,6 +108,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             reg_loss = torch.tensor(0.0)
         else:
             reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), kwargs=self._penalty_arguments)
+            reg = torch.maximum(torch.zeros(1), reg - MultiLayerPerceptron.THRESHOLD)
             reg_loss = self.alpha * reg
             alpha = self.alpha
         # build the total minimization loss and perform the backward pass
@@ -120,6 +121,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             pred = self.model(inp)
             def_loss = self.loss(pred, out)
             reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), kwargs=self._penalty_arguments)
+            reg = torch.maximum(torch.zeros(1), reg - MultiLayerPerceptron.THRESHOLD)
             reg_loss = self.alpha * reg
             tot_loss = def_loss + reg_loss
             self.manual_backward(-tot_loss)

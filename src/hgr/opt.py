@@ -240,7 +240,10 @@ class DoubleKernelHGR(KernelBasedHGR):
     """Kernel-based HGR computed by solving a constrained least square problem using a minimization solver."""
 
     degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
+    """The kernel degree for the first variable."""
+
     degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
+    """The kernel degree for the second variable."""
 
     @property
     def name(self) -> str:

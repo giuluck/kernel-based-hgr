@@ -5,7 +5,7 @@ import warnings
 
 from experiments import LearningExperiment
 from src.datasets import Communities, Adult, Census
-from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR
+from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR, DensityHGR
 
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -25,9 +25,10 @@ datasets = dict(
 # list all the valid metrics
 metrics = dict(
     unc=('UNC', None),
-    skn=('HGR-SK', SingleKernelHGR(degree=5)),
-    dkn=('HGR-KB', DoubleKernelHGR(degree_a=5, degree_b=5)),
-    adv=('HGR-NN', AdversarialHGR())
+    sk=('HGR-SK', SingleKernelHGR(degree=5)),
+    kb=('HGR-KB', DoubleKernelHGR(degree_a=5, degree_b=5)),
+    nn=('HGR-NN', AdversarialHGR()),
+    kde=('HGR-KDE', DensityHGR())
 )
 
 
@@ -48,7 +49,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(metrics),
-    default=list(metrics),
+    default=['unc', 'sk', 'nn', 'kb'],
     help='the metrics used as penalties'
 )
 parser.add_argument(
