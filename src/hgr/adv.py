@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, Tuple
 
 import numpy as np
@@ -15,25 +15,25 @@ from src.hgr.hgr import KernelsHGR
 DEVICE: torch.DeviceObjType = torch.device(str("cuda:0") if torch.cuda.is_available() else "cpu")
 """The torch device on which to run the adversarial networks."""
 
-EPOCHS: int = 1000
-"""The number of epochs used to run the adversarial networks."""
-
-PRETRAINED_EPOCHS: int = 50
-"""The number of epochs used to run the adversarial networks when they are pretrained."""
-
 EPSILON: float = 0.000000001
 """The tolerance used to standardize the results."""
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class AdversarialHGR(KernelsHGR):
+    epochs: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=1000)
+    """The number of epochs used to run the adversarial networks."""
+
+    pretrained_epochs: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=50)
+    """The number of epochs used to run the adversarial networks when they are pretrained."""
+
     @property
     def name(self) -> str:
         return 'nn'
 
     @property
     def configuration(self) -> Dict[str, Any]:
-        return dict(name=self.name)
+        return dict(name=self.name, epochs=self.epochs)
 
     @staticmethod
     def compute_with_networks(a: torch.Tensor,
@@ -63,7 +63,7 @@ class AdversarialHGR(KernelsHGR):
             b=torch.tensor(b, dtype=torch.float),
             net_1=Net_HGR(),
             net_2=Net2_HGR(),
-            epochs=EPOCHS
+            epochs=self.epochs
         )
         correlation = correlation.numpy(force=True).item()
         return float(correlation), dict(f=net_1, g=net_2)
@@ -73,16 +73,13 @@ class AdversarialHGR(KernelsHGR):
             t_std, t_mean = torch.std_mean(t, correction=0)
             return (t - t_mean) / (t_std + EPSILON)
 
-        # use the given networks and number of epochs when the metric is used as penalizer for a neural network
-        _, net_1, net_2 = self.compute_with_networks(
-            a=a.detach(),
-            b=b.detach(),
-            net_1=kwargs['net_1'],
-            net_2=kwargs['net_2'],
-            epochs=kwargs['epochs']
-        )
+        # set default kwargs in case they are not set (and overwrite them for next steps)
+        kwargs['net_1'] = kwargs.get('net_1', Net_HGR())
+        kwargs['net_2'] = kwargs.get('net_2', Net2_HGR())
+        kwargs['epochs'] = kwargs.get('epochs', self.epochs)
+        _, net_1, net_2 = self.compute_with_networks(a=a.detach(), b=b.detach(), **kwargs)
         # eventually, replace the number of epochs to the pretrained epochs for the next training step
-        kwargs['epochs'] = PRETRAINED_EPOCHS
+        kwargs['epochs'] = self.pretrained_epochs
         f = net_1(a.reshape(-1, 1))
         g = net_2(b.reshape(-1, 1))
         return torch.mean(standardize(f) * standardize(g))

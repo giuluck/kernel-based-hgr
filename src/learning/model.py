@@ -7,8 +7,7 @@ from torch import nn, Tensor
 from torch.autograd import Variable
 from torch.optim import Optimizer, Adam
 
-from src.hgr import DoubleKernelHGR, AdversarialHGR, HGR
-from src.hgr.adv import Net_HGR, Net2_HGR, EPOCHS
+from src.hgr import HGR
 
 
 class MultiLayerPerceptron(pl.LightningModule):
@@ -60,14 +59,6 @@ class MultiLayerPerceptron(pl.LightningModule):
         else:
             assert metric is not None or alpha is None, "If metric=None, alpha must be None as well."
 
-        # build a dictionary of arguments for the penalizer and check input consistency
-        if isinstance(metric, DoubleKernelHGR):
-            penalty_arguments = dict(a0=None, b0=None)
-        elif isinstance(metric, AdversarialHGR):
-            penalty_arguments = dict(epochs=EPOCHS, net_1=Net_HGR(), net_2=Net2_HGR())
-        else:
-            penalty_arguments = dict()
-
         self.model: nn.Sequential = nn.Sequential(*layers)
         """The neural network."""
 
@@ -83,20 +74,27 @@ class MultiLayerPerceptron(pl.LightningModule):
         self.feature: int = feature
         """The index of the excluded feature."""
 
-        self._penalty_arguments: Dict[str, Any] = penalty_arguments
-        """The arguments passed to the penalizer."""
+        self._penalty_arguments: Dict[str, Any] = dict()
+        """The arguments passed to the penalizer (empty at first, then filled by the penalizer itself)."""
 
     def forward(self, x: Tensor) -> Tensor:
         """Performs the forward pass on the model given the input (x)."""
         return self.model(x)
 
+    # noinspection PyUnresolvedReferences
     def training_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Dict[str, Tensor]:
         """Performs a training step on the given batch."""
         # retrieve the data and the optimizers
         start = time.time()
         inp, out = batch
         optimizers = self.optimizers()
-        def_opt, reg_opt = optimizers if isinstance(optimizers, list) else (optimizers, None)
+        if isinstance(optimizers, list):
+            def_opt, reg_opt = optimizers
+            # path to solve problem with lightning increasing the global step one time per optimizer
+            reg_opt._on_before_step = lambda: self.trainer.profiler.start("optimizer_step")
+            reg_opt._on_after_step = lambda: self.trainer.profiler.stop("optimizer_step")
+        else:
+            def_opt, reg_opt = optimizers, None
         # perform the standard loss minimization step
         def_opt.zero_grad()
         pred = self.model(inp)
@@ -124,28 +122,28 @@ class MultiLayerPerceptron(pl.LightningModule):
             reg = torch.maximum(torch.zeros(1), reg - MultiLayerPerceptron.THRESHOLD)
             reg_loss = self.alpha * reg
             tot_loss = def_loss + reg_loss
-            self.manual_backward(-tot_loss)
+            self.manual_backward(tot_loss)
             reg_opt.step()
         # return and log the information about the training
-        self.log(name='loss', value=tot_loss, on_step=False, on_epoch=True, reduce_fx='mean')
-        self.log(name='def_loss', value=def_loss, on_step=False, on_epoch=True, reduce_fx='mean')
-        self.log(name='reg_loss', value=reg_loss, on_step=False, on_epoch=True, reduce_fx='mean')
-        self.log(name='alpha', value=alpha, on_step=False, on_epoch=True, reduce_fx='mean')
-        self.log(name='reg', value=reg, on_step=False, on_epoch=True, reduce_fx='mean')
-        self.log(name='time', value=time.time() - start, on_step=False, on_epoch=True, reduce_fx='sum')
+        self.log(name='loss', value=tot_loss, on_step=True, on_epoch=False, reduce_fx='mean')
+        self.log(name='def_loss', value=def_loss, on_step=True, on_epoch=False, reduce_fx='mean')
+        self.log(name='reg_loss', value=reg_loss, on_step=True, on_epoch=False, reduce_fx='mean')
+        self.log(name='alpha', value=alpha, on_step=True, on_epoch=False, reduce_fx='mean')
+        self.log(name='reg', value=reg, on_step=True, on_epoch=False, reduce_fx='mean')
+        self.log(name='time', value=time.time() - start, on_step=True, on_epoch=False, reduce_fx='sum')
         return tot_loss
 
     def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Dict[str, Tensor]:
         inp, out = batch
         pred = self.model(inp)
         loss = self.loss(pred, out)
-        self.log(name='val_loss', value=loss, on_step=False, on_epoch=True)
+        self.log(name='val_loss', value=loss, on_step=True, on_epoch=False)
         return loss
 
     def configure_optimizers(self) -> Union[Optimizer, Tuple[Optimizer, Optimizer]]:
         """Configures the optimizer for the MLP depending on whether there is a variable alpha or not."""
+        optimizer = Adam(params=self.model.parameters(), lr=1e-3)
         if isinstance(self.alpha, Variable):
-            # noinspection PyTypeChecker
-            return Adam(params=self.model.parameters(), lr=1e-3), Adam(params=[self.alpha], lr=1e-3)
+            return optimizer, Adam(params=[self.alpha], maximize=True, lr=1e-3)
         else:
-            return Adam(params=self.model.parameters(), lr=1e-3)
+            return optimizer

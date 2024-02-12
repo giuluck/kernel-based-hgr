@@ -1,9 +1,10 @@
 import importlib.resources
+import math
 import os
 import pickle
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Any, List, Iterable, Callable, Tuple, Literal
+from typing import Dict, Optional, Any, List, Iterable, Callable, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,15 +43,6 @@ SEED: int = 0
 ALPHA: Optional[float] = None
 """The alpha value used in the experiment."""
 
-MINI_BATCH: int = 512
-"""The size of a mini batch."""
-
-MINI_EPOCHS: int = 200
-"""The number of epochs used during training with mini batches."""
-
-FULL_EPOCHS: int = 500
-"""The number of epochs used during training full batch."""
-
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class LearningExperiment(Experiment):
@@ -66,17 +58,22 @@ class LearningExperiment(Experiment):
     metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The metric to be used as penalty, or None for unconstrained model."""
 
-    units: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    hidden: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of hidden units used to build the neural model, or None to use the dataset default value."""
 
-    batch: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The batch size used during training, or -1 to train full batch."""
+    batches: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The number of batches used during training (e.g., 1 for full batch)."""
 
-    epochs: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The number of training epochs."""
+    steps: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The number of training steps."""
 
     wandb_project: Optional[str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The name of the Weights & Biases project for logging, or None for no logging."""
+
+    @property
+    def units(self) -> List[int]:
+        hidden = self.dataset.hidden if self.hidden is None else self.hidden
+        return [len(self.dataset.input_names), *hidden]
 
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
@@ -85,15 +82,15 @@ class LearningExperiment(Experiment):
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
         val_data = Data(x=val[self.dataset.input_names], y=val[self.dataset.target_name])
         # build model
-        units = self.dataset.units if self.units is None else self.units
         model = MultiLayerPerceptron(
-            units=[len(self.dataset.input_names), *units],
+            units=self.units,
             classification=self.dataset.classification,
             feature=self.dataset.excluded_index,
             metric=self.metric,
             alpha=None if self.metric is None else ALPHA
         )
         # build trainer and callback
+        progress = Progress()
         logger = InternalLogger()
         history = History(key=self.key)
         if self.wandb_project is not None:
@@ -104,20 +101,20 @@ class LearningExperiment(Experiment):
             loggers = [logger]
         trainer = pl.Trainer(
             deterministic=True,
-            min_epochs=self.epochs,
-            max_epochs=self.epochs,
+            min_steps=self.steps,
+            max_steps=self.steps,
             logger=loggers,
-            callbacks=[history, Progress()],
-            check_val_every_n_epoch=1,
+            callbacks=[history, progress],
             num_sanity_val_steps=0,
+            val_check_interval=1,
             log_every_n_steps=1,
             enable_progress_bar=False,
             enable_checkpointing=False,
             enable_model_summary=False
         )
         # run fitting
+        batch_size = int(math.ceil(len(trn_data) / self.batches))
         start = time.time()
-        batch_size = len(trn) if self.batch == -1 else self.batch
         trainer.fit(
             model=model,
             train_dataloaders=DataLoader(trn_data, batch_size=batch_size, shuffle=True),
@@ -153,41 +150,41 @@ class LearningExperiment(Experiment):
             split=self.split,
             metric={'name': 'unconstrained'} if self.metric is None else self.metric.configuration,
             units=self.units,
-            batch=self.batch,
-            epochs=self.epochs
+            steps=self.steps,
+            batches=self.batches,
         )
 
     @property
     def key(self) -> str:
-        metric = None if self.metric is None else self.metric.key
-        return f'{self.name}_{self.dataset.key}_{self.split}_{metric}_{self.units}_{self.batch}_{self.epochs}'
+        mtr = None if self.metric is None else self.metric.key
+        return f'{self.name}_{self.dataset.key}_{self.split}_{mtr}_{self.units}_{self.steps}_{self.batches}'
 
     @staticmethod
     def calibration(datasets: Dict[str, Dataset],
-                    batches: Iterable[int] = (-1, 128, 512),
-                    units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
-                    epochs: int = 300,
+                    batches: Iterable[int] = (1, 5, 20),
+                    hiddens: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
+                    steps: int = 1000,
                     split: float = 0.3,
                     wandb_project: Optional[str] = None,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
-        def configuration(ds, bt, un):
+        def configuration(ds, bt, hd):
             classification = datasets[ds].classification
-            return dict(dataset=ds, batch=bt, units=un), [
+            return dict(dataset=ds, batch=bt, hidden=hd), [
                 Loss(classification=classification),
                 Accuracy(classification=classification)
             ]
 
-        units = [list(u) for u in units]
+        hiddens = [list(h) for h in hiddens]
         experiments = LearningExperiment.doe(
             file_name='learning',
             save_time=0,
             verbose=True,
             dataset=datasets,
-            batch={str(b): b for b in batches},
-            units={str(u): u for u in units},
+            batches={b: b for b in batches},
+            hidden={str(h): h for h in hiddens},
             split=split,
-            epochs=epochs,
+            steps=steps,
             metric=None,
             wandb_project=wandb_project
         )
@@ -200,24 +197,24 @@ class LearningExperiment(Experiment):
                 **info,
                 'kpi': 'Time',
                 'split': 'Train',
-                'epoch': epoch,
-                'value': experiment.result['time'][epoch]
-            } for epoch in range(experiment.epochs)]
+                'step': step,
+                'value': experiment.result['time'][step]
+            } for step in range(experiment.steps)]
         results = pd.concat((results, pd.DataFrame(times)))
         # plot results
         sns.set_context('notebook')
         sns.set_style('whitegrid')
         for (dataset, kpi), data in results.groupby(['dataset', 'kpi']):
-            cl = len(units)
+            cl = len(hiddens)
             rw = len(batches)
             fig, axes = plt.subplots(rw, cl, figsize=(5 * cl, 4 * rw), sharex='all', sharey='all', tight_layout=True)
-            # used to index the axes in case either or both units and batches have only one value
+            # used to index the axes in case either or both hidden units and batches have only one value
             axes = np.array(axes).reshape(rw, cl)
             for i, batch in enumerate(batches):
-                for j, unit in enumerate(units):
+                for j, hidden in enumerate(hiddens):
                     sns.lineplot(
-                        data=data[np.logical_and(data['batch'] == str(batch), data['units'] == str(unit))],
-                        x='epoch',
+                        data=data[np.logical_and(data['batch'] == batch, data['hidden'] == str(hidden))],
+                        x='step',
                         y='value',
                         hue='split',
                         style='split',
@@ -228,8 +225,8 @@ class LearningExperiment(Experiment):
                         ax=axes[i, j]
                     )
                     axes[i, j].set_ylabel(kpi)
-                    axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'ACC'] else data[data['epoch'] > 20]['value'].max()))
-                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {unit}")
+                    axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'ACC'] else data[data['step'] > 20]['value'].max()))
+                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Hidden: {hidden}")
             # store, print, and plot if necessary
             for extension in formats:
                 name = f'calibration_{kpi}_{dataset}.{extension}'
@@ -243,7 +240,8 @@ class LearningExperiment(Experiment):
     @staticmethod
     def history(datasets: Dict[str, Dataset],
                 metrics: Dict[str, Optional[HGR]],
-                batches: Literal['mini', 'full', 'both'] = 'both',
+                batches: Iterable[int] = (1, 10),
+                steps: int = 600,
                 split: float = 0.3,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
@@ -264,16 +262,11 @@ class LearningExperiment(Experiment):
                 *s
             ]
 
-        batch_kinds = {}
-        if batches in ['mini', 'both']:
-            batch_kinds['mini'] = (MINI_EPOCHS, MINI_BATCH)
-        if batches in ['full', 'both']:
-            batch_kinds['full'] = (FULL_EPOCHS, -1)
         sns.set_context('notebook')
         sns.set_style('whitegrid')
         # iterate over dataset and batches
         for name, dataset in datasets.items():
-            for kind, (epochs, batch) in batch_kinds.items():
+            for batch in batches:
                 # use dictionaries for dataset to retrieve correct configuration
                 experiments = LearningExperiment.doe(
                     file_name='learning',
@@ -282,9 +275,9 @@ class LearningExperiment(Experiment):
                     dataset={name: dataset},
                     metric=metrics,
                     split=split,
-                    units=None,
-                    epochs=epochs,
-                    batch=batch,
+                    hidden=None,
+                    steps=steps,
+                    batches=batch,
                     wandb_project=wandb_project
                 )
                 # get and plot metric results
@@ -296,7 +289,7 @@ class LearningExperiment(Experiment):
                     for j, kpi in enumerate(kpis):
                         sns.lineplot(
                             data=group[np.logical_and(group['split'] == sp, group['kpi'] == kpi)],
-                            x='epoch',
+                            x='step',
                             y='value',
                             estimator='mean',
                             errorbar='sd',
@@ -324,15 +317,15 @@ class LearningExperiment(Experiment):
                         alphas = result['alpha']
                     history.extend([{
                         'metric': mtr,
-                        'epoch': epoch,
-                        'Training Time (s)': times[epoch],
-                        'Lambda Weight': alphas[epoch]
-                    } for epoch in range(experiment.epochs)])
+                        'step': step,
+                        'Training Time (s)': times[step],
+                        'Lambda Weight': alphas[step]
+                    } for step in range(experiment.steps)])
                 history = pd.DataFrame(history)
                 for i, col in enumerate(['Training Time (s)', 'Lambda Weight']):
                     sns.lineplot(
                         data=history,
-                        x='epoch',
+                        x='step',
                         y=col,
                         estimator='mean',
                         errorbar='sd',
@@ -354,10 +347,11 @@ class LearningExperiment(Experiment):
                 leg.set_title('metric')
                 # store, print, and plot if necessary
                 for extension in formats:
-                    with importlib.resources.path('experiments.exports', f'history_{name}_{kind}.{extension}') as file:
+                    filename = f'history_{name}_{batch}.{extension}'
+                    with importlib.resources.path('experiments.exports', filename) as file:
                         fig.savefig(file, bbox_inches='tight')
                 if plot:
-                    fig.suptitle(f"Learning History for {name.title()} ({kind.title()} Batch)")
+                    fig.suptitle(f"Learning History for {name.title()} (batches={batch})")
                     fig.show()
                 plt.close(fig)
 
@@ -374,19 +368,19 @@ class LearningExperiment(Experiment):
             ytr = ext['train_target'].numpy(force=True).flatten()
             xvl = ext['val_inputs'].numpy(force=True)
             yvl = ext['val_target'].numpy(force=True).flatten()
-            # compute metrics for each epoch
+            # compute metrics for each step
             info, metrics = configuration(*index)
             outputs = {
                 **{f'train_{mtr.name}': ext.get(f'train_{mtr.name}', []) for mtr in metrics},
                 **{f'val_{mtr.name}': ext.get(f'val_{mtr.name}', []) for mtr in metrics},
             }
             # if the metrics are already pre-computed, load them
-            if np.all([len(v) == experiment.epochs for v in outputs.values()]):
+            if np.all([len(v) == experiment.steps for v in outputs.values()]):
                 print(f'Fetching Metrics for {experiment.key}')
                 df = pd.DataFrame(outputs).melt()
                 df['split'] = df['variable'].map(lambda v: v.split('_')[0].title())
                 df['kpi'] = df['variable'].map(lambda v: v.split('_')[1])
-                df['epoch'] = list(range(experiment.epochs)) * len(outputs)
+                df['step'] = list(range(experiment.steps)) * len(outputs)
                 for key, value in info.items():
                     df[key] = value
                 df = df.drop(columns='variable').to_dict(orient='records')
@@ -395,9 +389,9 @@ class LearningExperiment(Experiment):
             else:
                 if not np.all([len(v) == 0 for v in outputs.values()]):
                     print(f"WARNING: recomputing metrics for {experiment.key} due to possible serialization errors")
-                for epoch in tqdm(range(experiment.epochs), desc=f'Computing Metrics for {experiment.key}'):
-                    info['epoch'] = epoch
-                    hst = experiment.result['history'][epoch]
+                for step in tqdm(range(experiment.steps), desc=f'Computing Metrics for {experiment.key}'):
+                    info['step'] = step
+                    hst = experiment.result['history'][step]
                     ptr = hst['train_predictions'].numpy(force=True).flatten()
                     pvl = hst['val_predictions'].numpy(force=True).flatten()
                     for mtr in metrics:

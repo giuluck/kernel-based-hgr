@@ -10,8 +10,11 @@ from scipy.stats import pearsonr
 
 from src.hgr import KernelsHGR
 
+DEGREE: int = 5
+"""Default degree for kernel-based metrics."""
+
 TOL: float = 1e-2
-"""The tolerance used when checking for linear dependencies."""
+"""The tolerance used when checking for linear dependencies and when solving the optimization problem."""
 
 EPS: float = 0.0
 """The tolerance used to account for null standard deviation."""
@@ -144,7 +147,16 @@ class KernelBasedHGR(KernelsHGR):
         a0 = np.ones(dx) / f_slim.sum(axis=1).std(ddof=0) if a0 is None else a0[f_indices]
         b0 = np.ones(dy) / g_slim.sum(axis=1).std(ddof=0) if b0 is None else b0[g_indices]
         x0 = np.concatenate((a0, b0))
-        s = minimize(_fun, jac=True, hess=lambda *_: fun_hess, x0=x0, constraints=[constraint], method='trust-constr')
+        s = minimize(
+            _fun,
+            jac=True,
+            hess=lambda *_: fun_hess,
+            x0=x0,
+            constraints=[constraint],
+            method='trust-constr',
+            tol=TOL,
+            # options=dict(verbose=3)
+        )
         # reconstruct alpha and beta by adding zeros wherever the indices were not considered
         alpha = np.zeros(degree_x)
         alpha[f_indices] = s.x[:dx]
@@ -239,10 +251,10 @@ class KernelBasedHGR(KernelsHGR):
 class DoubleKernelHGR(KernelBasedHGR):
     """Kernel-based HGR computed by solving a constrained least square problem using a minimization solver."""
 
-    degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
+    degree_a: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
     """The kernel degree for the first variable."""
 
-    degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
+    degree_b: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
     """The kernel degree for the second variable."""
 
     @property
@@ -266,14 +278,15 @@ class DoubleKernelHGR(KernelBasedHGR):
         return float(hgr), dict(alpha=alpha, beta=beta)
 
     def __call__(self, a: torch.Tensor, b: torch.Tensor, kwargs: Optional[Dict[str, Any]] = None) -> torch.Tensor:
-        # use the given a0/b0 when the metric is used as penalizer for a neural network
+        # set default kwargs in case they are not set (and overwrite them for next steps)
+        kwargs['a0'] = kwargs.get('a0', None)
+        kwargs['b0'] = kwargs.get('b0', None)
         hgr, alpha, beta = KernelBasedHGR._compute_torch(
             a=a,
             b=b,
             degree_a=self.degree_a,
             degree_b=self.degree_b,
-            a0=kwargs['a0'],
-            b0=kwargs['b0']
+            **kwargs
         )
         # eventually, replace a0/b0 in the arguments with the new value for the next training step
         kwargs['a0'] = alpha.numpy(force=True)
@@ -285,7 +298,7 @@ class DoubleKernelHGR(KernelBasedHGR):
 class SingleKernelHGR(KernelBasedHGR):
     """Kernel-based HGR computed using one kernel only for both variables and then taking the maximal correlation."""
 
-    degree: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=None)
+    degree: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True, default=DEGREE)
     """The kernel degree for the variables."""
 
     @property

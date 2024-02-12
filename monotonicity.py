@@ -41,7 +41,7 @@ parser.add_argument(
     '--degrees_a',
     type=int,
     nargs='+',
-    default=[1, 2, 3, 4, 5],
+    default=[1, 2, 3, 4, 5, 6, 7],
     help='the degrees for the a variable'
 )
 parser.add_argument(
@@ -49,7 +49,7 @@ parser.add_argument(
     '--degrees_b',
     type=int,
     nargs='+',
-    default=[1, 2, 3, 4, 5],
+    default=[1, 2, 3, 4, 5, 6, 7],
     help='the degrees for the b variable'
 )
 parser.add_argument(

@@ -79,7 +79,7 @@ class AnalysisExperiment(Experiment):
                     save_time=save_time,
                     verbose=False,
                     dataset=dataset,
-                    metric=DoubleKernelHGR(degree_a=5, degree_b=5),
+                    metric=DoubleKernelHGR(),
                     features={ft: (var, ft) for ft in dataset.input_names if ft != var}
                 )
                 print()
@@ -126,8 +126,8 @@ class AnalysisExperiment(Experiment):
                 x = dataset[f1].values
                 y = dataset[f2].values
                 metrics = {
-                    True: DoubleKernelHGR(degree_a=5, degree_b=1),
-                    False: DoubleKernelHGR(degree_a=1, degree_b=5)
+                    True: DoubleKernelHGR(degree_b=1),
+                    False: DoubleKernelHGR(degree_a=1)
                 }
                 experiments = AnalysisExperiment.doe(
                     file_name='analysis',

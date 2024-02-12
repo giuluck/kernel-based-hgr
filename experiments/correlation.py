@@ -145,8 +145,8 @@ class CorrelationExperiment(Experiment):
     def correlations(datasets: Dict[str, Callable[[float, int], Deterministic]],
                      metrics: Dict[str, HGR],
                      noises: Iterable[float] = np.linspace(0.0, 3.0, num=16, endpoint=True).round(2),
-                     data_seeds: Iterable[int] = range(10),
-                     algorithm_seeds: Iterable[int] = range(10),
+                     data_seeds: Iterable[int] = range(5),
+                     algorithm_seeds: Iterable[int] = range(5),
                      test: bool = False,
                      columns: int = 2,
                      formats: Iterable[str] = ('png',),
@@ -192,8 +192,8 @@ class CorrelationExperiment(Experiment):
         # plot results
         sns.set_context('notebook')
         sns.set_style('whitegrid')
-        plots = len(datasets) + 1
-        rows = int(np.ceil(plots / columns))
+        plots = len(datasets)
+        rows = int(np.ceil((plots + 1) / columns))
         fig = {'train': plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)}
         if test:
             fig['test'] = plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)

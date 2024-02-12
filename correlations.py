@@ -28,8 +28,8 @@ datasets = dict(
 
 # list all the valid metrics
 metrics = dict(
-    kb=('HGR-KB', DoubleKernelHGR(degree_a=7, degree_b=7)),
-    sk=('HGR-SK', SingleKernelHGR(degree=7)),
+    kb=('HGR-KB', DoubleKernelHGR()),
+    sk=('HGR-SK', SingleKernelHGR()),
     nn=('HGR-NN', AdversarialHGR()),
     kde=('HGR-KDE', DensityHGR()),
     chi=('CHI^2', ChiSquare()),
@@ -70,7 +70,7 @@ parser.add_argument(
     '--data-seeds',
     type=int,
     nargs='+',
-    default=list(range(10)),
+    default=list(range(5)),
     help='the number of dataset variants per experiment'
 )
 parser.add_argument(
@@ -78,7 +78,7 @@ parser.add_argument(
     '--algorithm-seeds',
     type=int,
     nargs='+',
-    default=list(range(10)),
+    default=list(range(5)),
     help='the number of tests per experiment'
 )
 parser.add_argument(

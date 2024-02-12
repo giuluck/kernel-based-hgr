@@ -31,7 +31,7 @@ class Census(Dataset):
         return False
 
     @property
-    def units(self) -> List[int]:
+    def hidden(self) -> List[int]:
         return [32]
 
     @property

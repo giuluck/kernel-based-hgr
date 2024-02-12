@@ -43,7 +43,7 @@ class Dataset(Cacheable):
 
     @property
     @abstractmethod
-    def units(self) -> List[int]:
+    def hidden(self) -> List[int]:
         """The number of hidden units in the neural model trained on the dataset."""
         pass
 

@@ -156,6 +156,8 @@ class Experiment(Cacheable):
                     with open(filepath, 'wb') as file:
                         file.write(dump)
                     gap = time.time()
+                    # run garbage collector to free memory before running the next experiments
+                    gc.collect()
                     to_save = False
                 else:
                     to_save = True
@@ -166,14 +168,14 @@ class Experiment(Cacheable):
                     assert exp == ref, f"Wrong attribute '{k}' loaded for '{key}', expected {exp}, got {ref}"
                 experiment._cache['result'] = Experiment.Result(**out.pop('result'))
                 assert len(out) == 0, f"Output has additional keys {out.keys()} which are not expected for '{key}'"
-            # run garbage collector to free memory before running the next experiments
-            gc.collect()
         # if necessary, save the results at the end of the doe, then return the experiments
         if to_save:
             # dump the file before writing to check if it is pickle-compliant
             dump = pickle.dumps(results)
             with open(filepath, 'wb') as file:
                 file.write(dump)
+            # run garbage collector to free memory before running the next experiments
+            gc.collect()
         return experiments
 
     @staticmethod

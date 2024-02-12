@@ -27,7 +27,7 @@ class Adult(Dataset):
         return True
 
     @property
-    def units(self) -> List[int]:
+    def hidden(self) -> List[int]:
         return [32, 32]
 
     @property

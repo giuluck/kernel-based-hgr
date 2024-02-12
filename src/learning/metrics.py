@@ -92,10 +92,10 @@ class Correlation(Metric):
             metric = DoubleKernelHGR(degree_a=1, degree_b=1)
             def_name = 'PEARSON'
         elif algorithm == 'sk':
-            metric = SingleKernelHGR(degree=5)
+            metric = SingleKernelHGR()
             def_name = 'HGR-SK'
         elif algorithm == 'kb':
-            metric = DoubleKernelHGR(degree_a=5, degree_b=5)
+            metric = DoubleKernelHGR()
             def_name = 'HGR-KB'
         elif algorithm == 'nn':
             metric = AdversarialHGR()

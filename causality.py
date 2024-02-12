@@ -22,7 +22,7 @@ parser.add_argument(
     '--datasets',
     type=str,
     nargs='+',
-    choices=list(datasets),
+    choices=['communities', 'adult'],
     default=list(datasets),
     help='the datasets on which to run the experiment'
 )
@@ -31,7 +31,7 @@ parser.add_argument(
     '--on',
     type=str,
     choices=['surrogate', 'target', 'both'],
-    default='both',
+    default='target',
     help='the features between which the importance is computed'
 )
 parser.add_argument(

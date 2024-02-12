@@ -42,14 +42,14 @@ def metrics(key):
     if key == 'nn':
         return 'HGR-NN', AdversarialHGR()
     elif key == 'kb':
-        return 'HGR-KB', DoubleKernelHGR(degree_a=7, degree_b=7)
+        return 'HGR-KB', DoubleKernelHGR()
     elif key == 'sk':
-        return 'HGR-SK', SingleKernelHGR(degree=7)
+        return 'HGR-SK', SingleKernelHGR()
     elif re.compile('kb-([0-9]+)').match(key):
-        degree = int(key[4:])
+        degree = int(key[3:])
         return f'HGR-KB ({degree})', DoubleKernelHGR(degree_a=degree, degree_b=degree)
     elif re.compile('sk-([0-9]+)').match(key):
-        degree = int(key[4:])
+        degree = int(key[3:])
         return f'HGR-SK ({degree})', SingleKernelHGR(degree=degree)
     else:
         raise KeyError(f"Invalid key '{key}' for metric")

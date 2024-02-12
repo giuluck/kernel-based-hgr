@@ -36,7 +36,7 @@ class Deterministic(Dataset, ABC):
         return False
 
     @property
-    def units(self) -> List[int]:
+    def hidden(self) -> List[int]:
         return []
 
     @property

@@ -40,11 +40,12 @@ parser.add_argument(
     '--batches',
     type=int,
     nargs='*',
-    default=[-1, 128, 512],
-    help='the batch sizes used in the experiment'
+    default=[1, 5, 20],
+    help='the number of batches used during training (e.g., 1 for full batch)'
 )
 parser.add_argument(
     '-u',
+    '--hiddens',
     '--units',
     nargs='*',
     type=int,
@@ -52,21 +53,21 @@ parser.add_argument(
     help='the hidden units used in the experiment'
 )
 parser.add_argument(
-    '-e',
-    '--epochs',
+    '-s',
+    '--steps',
     type=int,
-    default=300,
-    help='the number of epochs to run for each network'
+    default=1000,
+    help='the number of steps to run for each network'
 )
 parser.add_argument(
-    '-s',
+    '-t',
     '--split',
     type=float,
     default=0.3,
     help='the train/test split value'
 )
 parser.add_argument(
-    '-wp',
+    '-p',
     '--wandb-project',
     type=str,
     nargs='?',
@@ -88,7 +89,7 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
-args['units'] = units if args['units'] is None else args['units']
+args['hiddens'] = units if args['hiddens'] is None else args['hiddens']
 print("Starting experiment 'calibration'...")
 for k, v in args.items():
     print('  >', k, '-->', v)

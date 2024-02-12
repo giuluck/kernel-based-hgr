@@ -29,7 +29,7 @@ class Communities(Dataset):
         return False
 
     @property
-    def units(self) -> List[int]:
+    def hidden(self) -> List[int]:
         return [256, 256]
 
     @property

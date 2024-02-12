@@ -25,8 +25,8 @@ datasets = dict(
 # list all the valid metrics
 metrics = dict(
     unc=('UNC', None),
-    sk=('HGR-SK', SingleKernelHGR(degree=5)),
-    kb=('HGR-KB', DoubleKernelHGR(degree_a=5, degree_b=5)),
+    sk=('HGR-SK', SingleKernelHGR()),
+    kb=('HGR-KB', DoubleKernelHGR()),
     nn=('HGR-NN', AdversarialHGR()),
     kde=('HGR-KDE', DensityHGR())
 )
@@ -53,22 +53,29 @@ parser.add_argument(
     help='the metrics used as penalties'
 )
 parser.add_argument(
+    '-b',
+    '--batches',
+    type=int,
+    nargs='*',
+    default=[1, 10],
+    help='the number of batches used during training (e.g., 1 for full batch)'
+)
+parser.add_argument(
     '-s',
+    '--steps',
+    type=int,
+    default=600,
+    help='the number of steps to run for each network'
+)
+parser.add_argument(
+    '-t',
     '--split',
     type=float,
     default=0.3,
     help='the train/test split value'
 )
 parser.add_argument(
-    '-b',
-    '--batches',
-    type=str,
-    choices=['mini', 'full', 'both'],
-    default='both',
-    help='whether to train the networks with mini batches, full batch, or both'
-)
-parser.add_argument(
-    '-wp',
+    '-p',
     '--wandb-project',
     type=str,
     nargs='?',
