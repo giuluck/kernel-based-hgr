@@ -51,6 +51,8 @@ class MultiLayerPerceptron(pl.LightningModule):
             layers.append(nn.Linear(inp, out))
             layers.append(nn.ReLU())
         layers.append(nn.Linear(units[-1], 1))
+        if classification:
+            layers.append(nn.Sigmoid())
 
         # if there is a penalty and alpha is None, then build a variable for alpha
         if alpha is None and metric is not None:
@@ -62,7 +64,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         self.model: nn.Sequential = nn.Sequential(*layers)
         """The neural network."""
 
-        self.loss: nn.Module = nn.BCEWithLogitsLoss() if classification else nn.MSELoss()
+        self.loss: nn.Module = nn.BCELoss() if classification else nn.MSELoss()
         """The loss function."""
 
         self.metric: Optional[HGR] = metric

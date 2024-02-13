@@ -52,8 +52,11 @@ class LearningExperiment(Experiment):
     dataset: Dataset = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The dataset used in the experiment."""
 
-    split: float = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The train/test split value."""
+    fold: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The fold that is used for training the model."""
+
+    folds: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The number of folds for k-fold cross-validation."""
 
     metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The metric to be used as penalty, or None for unconstrained model."""
@@ -78,7 +81,7 @@ class LearningExperiment(Experiment):
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
         # retrieve train and validation data from splits and set parameters
-        trn, val = self.dataset.data(split=self.split, seed=SEED)
+        trn, val = self.dataset.data(folds=self.folds, seed=SEED)[self.fold]
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
         val_data = Data(x=val[self.dataset.input_names], y=val[self.dataset.target_name])
         # build model
@@ -147,30 +150,31 @@ class LearningExperiment(Experiment):
         return dict(
             experiment=self.name,
             dataset=self.dataset.configuration,
-            split=self.split,
             metric={'name': 'unconstrained'} if self.metric is None else self.metric.configuration,
             units=self.units,
             steps=self.steps,
             batches=self.batches,
+            folds=self.folds,
+            fold=self.fold,
         )
 
     @property
     def key(self) -> str:
         mtr = None if self.metric is None else self.metric.key
-        return f'{self.name}_{self.dataset.key}_{self.split}_{mtr}_{self.units}_{self.steps}_{self.batches}'
+        return f'{self.name}_{self.dataset.key}_{mtr}_{self.units}_{self.steps}_{self.batches}_{self.folds}_{self.fold}'
 
     @staticmethod
     def calibration(datasets: Dict[str, Dataset],
                     batches: Iterable[int] = (1, 5, 20),
                     hiddens: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
                     steps: int = 1000,
-                    split: float = 0.3,
+                    folds: int = 3,
                     wandb_project: Optional[str] = None,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
-        def configuration(ds, bt, hd):
+        def configuration(ds, bt, hd, fl):
             classification = datasets[ds].classification
-            return dict(dataset=ds, batch=bt, hidden=hd), [
+            return dict(dataset=ds, batch=bt, hidden=hd, fold=fl), [
                 Loss(classification=classification),
                 Accuracy(classification=classification)
             ]
@@ -183,7 +187,8 @@ class LearningExperiment(Experiment):
             dataset=datasets,
             batches={b: b for b in batches},
             hidden={str(h): h for h in hiddens},
-            split=split,
+            fold=list(range(folds)),
+            folds=folds,
             steps=steps,
             metric=None,
             wandb_project=wandb_project
@@ -242,11 +247,11 @@ class LearningExperiment(Experiment):
                 metrics: Dict[str, Optional[HGR]],
                 batches: Iterable[int] = (1, 10),
                 steps: int = 600,
-                split: float = 0.3,
+                folds: int = 3,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
-        def configuration(ds, mt):
+        def configuration(ds, mt, fl):
             d = datasets[ds]
             # include the DIDI on surrogate excluded index only if present
             s = [] if d.surrogate_name is None else [DIDI(
@@ -255,7 +260,7 @@ class LearningExperiment(Experiment):
                 name=f'Surrogate DIDI'
             )]
             # return a list of metrics for loss, accuracy, correlation, and optionally surrogate fairness
-            return dict(dataset=ds, metric=mt), [
+            return dict(dataset=ds, metric=mt, fold=fl), [
                 Loss(classification=d.classification),
                 Accuracy(classification=d.classification),
                 Correlation(excluded=d.excluded_index, algorithm='sk', name=f'Protected HGR'),
@@ -274,7 +279,8 @@ class LearningExperiment(Experiment):
                     verbose=True,
                     dataset={name: dataset},
                     metric=metrics,
-                    split=split,
+                    fold=list(range(folds)),
+                    folds=folds,
                     hidden=None,
                     steps=steps,
                     batches=batch,
@@ -307,7 +313,7 @@ class LearningExperiment(Experiment):
                 # get and plot history results (alpha and time)
                 history = []
                 to_remove = []
-                for (_, mtr), experiment in experiments.items():
+                for (_, mtr, fld), experiment in experiments.items():
                     result = experiment.result
                     times = result['time']
                     if experiment.metric is None:
@@ -317,6 +323,7 @@ class LearningExperiment(Experiment):
                         alphas = result['alpha']
                     history.extend([{
                         'metric': mtr,
+                        'fold': fld,
                         'step': step,
                         'Training Time (s)': times[step],
                         'Lambda Weight': alphas[step]

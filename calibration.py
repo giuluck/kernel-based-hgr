@@ -60,11 +60,11 @@ parser.add_argument(
     help='the number of steps to run for each network'
 )
 parser.add_argument(
-    '-t',
-    '--split',
-    type=float,
-    default=0.3,
-    help='the train/test split value'
+    '-k',
+    '--folds',
+    type=int,
+    default=3,
+    help='the number of folds to be used for cross-validation'
 )
 parser.add_argument(
     '-p',
