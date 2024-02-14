@@ -4,11 +4,11 @@ from typing import List, Any, Dict, Optional
 
 import pandas as pd
 
-from src.datasets.dataset import Dataset
+from src.datasets.dataset import SurrogateDataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Communities(Dataset):
+class Communities(SurrogateDataset):
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'communities.csv') as filepath:
             data = pd.read_csv(filepath)
@@ -37,7 +37,7 @@ class Communities(Dataset):
         return 'pctWhite'
 
     @property
-    def surrogate_name(self) -> Optional[str]:
+    def surrogate_name(self) -> str:
         return 'race'
 
     @property

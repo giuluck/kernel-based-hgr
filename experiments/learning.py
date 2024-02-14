@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from experiments.experiment import Experiment
-from src.datasets import Dataset
+from src.datasets import SurrogateDataset
 from src.hgr import HGR
 from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History, \
     Correlation
@@ -49,7 +49,7 @@ class LearningExperiment(Experiment):
     """An experiment where a neural network is constrained so that the correlation between a protected variable and the
     target is reduced."""
 
-    dataset: Dataset = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    dataset: SurrogateDataset = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The dataset used in the experiment."""
 
     fold: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
@@ -150,7 +150,7 @@ class LearningExperiment(Experiment):
         return dict(
             experiment=self.name,
             dataset=self.dataset.configuration,
-            metric={'name': 'unconstrained'} if self.metric is None else self.metric.configuration,
+            metric={'name': 'unc'} if self.metric is None else self.metric.configuration,
             units=self.units,
             steps=self.steps,
             batches=self.batches,
@@ -164,7 +164,7 @@ class LearningExperiment(Experiment):
         return f'{self.name}_{self.dataset.key}_{mtr}_{self.units}_{self.steps}_{self.batches}_{self.folds}_{self.fold}'
 
     @staticmethod
-    def calibration(datasets: Dict[str, Dataset],
+    def calibration(datasets: Dict[str, SurrogateDataset],
                     batches: Iterable[int] = (1, 5, 20),
                     hiddens: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
                     steps: int = 1000,
@@ -243,7 +243,7 @@ class LearningExperiment(Experiment):
             plt.close(fig)
 
     @staticmethod
-    def history(datasets: Dict[str, Dataset],
+    def history(datasets: Dict[str, SurrogateDataset],
                 metrics: Dict[str, Optional[HGR]],
                 batches: Iterable[int] = (1, 10),
                 steps: int = 600,

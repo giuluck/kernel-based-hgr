@@ -63,11 +63,6 @@ class Dataset(Cacheable):
         """The name of the excluded feature."""
         pass
 
-    @property
-    def surrogate_name(self) -> Optional[str]:
-        """The name of the discrete surrogate."""
-        return None
-
     def data(self, folds: int, seed: int) -> List[Tuple[pd.DataFrame, pd.DataFrame]]:
         """Returns a list of tuples <train, val> (if folds == 1, splits between 70% train and 30% test)."""
         data = self._data
@@ -96,19 +91,6 @@ class Dataset(Cacheable):
         """The protected feature vector."""
         return Dataset._to_backend(v=self._data[self.excluded_name], backend=backend)
 
-    @property
-    def surrogate_index(self) -> Optional[int]:
-        """The index of the discrete surrogate within the input matrix."""
-        if self.surrogate_name is None:
-            return None
-        return self.input_names.index(self.surrogate_name)
-
-    def surrogate(self, backend: BackendType = 'numpy') -> BackendOutput:
-        """The discrete surrogate of the excluded feature."""
-        if self.surrogate_name is None:
-            return None
-        return Dataset._to_backend(v=self._data[self.surrogate_name], backend=backend)
-
     def plot(self, ax: plt.Axes, **kwargs):
         """Plots the excluded and the target feature in the given ax with the given arguments."""
         ax.scatter(self.excluded(backend='numpy'), self.target(backend='numpy'), **kwargs)
@@ -129,3 +111,21 @@ class Dataset(Cacheable):
             return torch.tensor(v.values, dtype=torch.float32)
         else:
             raise AssertionError(f"Unknown backend '{backend}'")
+
+
+@dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
+class SurrogateDataset(Dataset):
+    @property
+    @abstractmethod
+    def surrogate_name(self) -> str:
+        """The name of the discrete surrogate."""
+        pass
+
+    @property
+    def surrogate_index(self) -> int:
+        """The index of the discrete surrogate within the input matrix."""
+        return self.input_names.index(self.surrogate_name)
+
+    def surrogate(self, backend: BackendType = 'numpy') -> BackendOutput:
+        """The discrete surrogate of the excluded feature."""
+        return Dataset._to_backend(v=self._data[self.surrogate_name], backend=backend)

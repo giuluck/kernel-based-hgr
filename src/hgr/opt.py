@@ -19,6 +19,9 @@ TOL: float = 1e-2
 EPS: float = 0.0
 """The tolerance used to account for null standard deviation."""
 
+MAX_SIZE: int = 25000
+"""The maximal size after which using least squares regression becomes inconvenient."""
+
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class KernelBasedHGR(KernelsHGR):
@@ -181,11 +184,11 @@ class KernelBasedHGR(KernelsHGR):
         #  - if no degree is 1, use the optimization routine and compute the projected vectors from the coefficients
         if degree_a == 1 and degree_b == 1:
             alpha, beta = np.ones(1), np.ones(1)
-        elif degree_a == 1:
+        elif degree_a == 1 and len(b) < MAX_SIZE:
             std = a.std(ddof=0) + EPS
             alpha = np.ones(1) / std
             beta, _, _, _ = np.linalg.lstsq(g, f[:, 0] / std, rcond=None)
-        elif degree_b == 1:
+        elif degree_b == 1 and len(a) < MAX_SIZE:
             std = b.std(ddof=0) + EPS
             beta = np.ones(1) / std
             alpha, _, _, _ = np.linalg.lstsq(f, g[:, 0] / std, rcond=None)
@@ -222,12 +225,12 @@ class KernelBasedHGR(KernelsHGR):
         if degree_a == 1 and degree_b == 1:
             fa = standardize(a)
             gb = standardize(b)
-        elif degree_a == 1:
+        elif degree_a == 1 and len(b) < MAX_SIZE:
             # the 'gelsd' driver allows to have both more precise and more reproducible results
             fa = standardize(a)
             beta, _, _, _ = torch.linalg.lstsq(g, fa, driver='gelsd')
             gb = standardize(g @ beta)
-        elif degree_b == 1:
+        elif degree_b == 1 and len(a) < MAX_SIZE:
             # the 'gelsd' driver allows to have both more precise and more reproducible results
             gb = standardize(b)
             alpha, _, _, _ = torch.linalg.lstsq(f, gb, driver='gelsd')

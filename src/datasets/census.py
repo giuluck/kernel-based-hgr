@@ -4,21 +4,22 @@ from typing import List, Dict, Any
 
 import pandas as pd
 
-from src.datasets.dataset import Dataset
+from src.datasets.dataset import SurrogateDataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Census(Dataset):
+class Census(SurrogateDataset):
 
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'census.csv') as filepath:
             data = pd.read_csv(filepath)
         data = data.drop(columns=['CensusTract', 'County', 'Poverty', 'Men']).dropna()
+        data['Unemployment'] = data['Unemployment'] > data['Unemployment'].mean()
         for column, values in data.items():
-            # standardize all features but state (categorical) and ChildPoverty (target to normalize)
+            # standardize all but State (categorical), Unemployment (binarized), and ChildPoverty (target to normalize)
             if column == 'ChildPoverty':
                 data[column] = (values - values.min()) / (values.max() - values.min())
-            elif column != 'State':
+            elif column not in ['State', 'Unemployment']:
                 data[column] = (values - values.mean()) / values.std(ddof=0)
         return data.reset_index(drop=True).pipe(pd.get_dummies).astype(float)
 
@@ -41,6 +42,10 @@ class Census(Dataset):
     @property
     def target_name(self) -> str:
         return 'ChildPoverty'
+
+    @property
+    def surrogate_name(self) -> str:
+        return 'Unemployment'
 
     @property
     def configuration(self) -> Dict[str, Any]:

@@ -57,7 +57,7 @@ parser.add_argument(
     '--batches',
     type=int,
     nargs='*',
-    default=[1, 10],
+    default=[10, 1],
     help='the number of batches used during training (e.g., 1 for full batch)'
 )
 parser.add_argument(

@@ -357,7 +357,7 @@ class CorrelationExperiment(Experiment):
                 y='hgr',
                 x='split',
                 hue='metric',
-                estimator='median',
+                estimator='mean',
                 errorbar='sd',
                 palette=PALETTE[:len(metrics)]
             )

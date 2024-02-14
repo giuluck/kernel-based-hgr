@@ -4,11 +4,11 @@ from typing import Dict, Any, List, Optional
 
 import pandas as pd
 
-from src.datasets.dataset import Dataset
+from src.datasets.dataset import SurrogateDataset
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class Adult(Dataset):
+class Adult(SurrogateDataset):
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'adult.csv') as filepath:
             data = pd.read_csv(filepath).astype(float)
@@ -35,7 +35,7 @@ class Adult(Dataset):
         return 'age'
 
     @property
-    def surrogate_name(self) -> Optional[str]:
+    def surrogate_name(self) -> str:
         return 'marital-status_Never-married'
 
     @property
