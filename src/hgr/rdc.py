@@ -9,7 +9,7 @@ from src.hgr.hgr import HGR
 
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
-class RandomizedDependencyCoefficient(HGR):
+class RandomizedDependenceCoefficient(HGR):
     @property
     def name(self) -> str:
         return 'rdc'

@@ -5,7 +5,7 @@ import numpy as np
 
 from experiments import CorrelationExperiment
 from src.datasets import Polynomial, NonLinear
-from src.hgr import DoubleKernelHGR, DensityHGR, ChiSquare, RandomizedDependencyCoefficient, SingleKernelHGR, \
+from src.hgr import DoubleKernelHGR, DensityHGR, ChiSquare, RandomizedDependenceCoefficient, SingleKernelHGR, \
     AdversarialHGR
 
 log = logging.getLogger("lightning_fabric")
@@ -33,7 +33,7 @@ metrics = dict(
     nn=('HGR-NN', AdversarialHGR()),
     kde=('HGR-KDE', DensityHGR()),
     chi=('CHI^2', ChiSquare()),
-    rdc=('RDC', RandomizedDependencyCoefficient()),
+    rdc=('RDC', RandomizedDependenceCoefficient()),
     prs=('PEARS', DoubleKernelHGR(degree_a=1, degree_b=1))
 )
 
@@ -45,7 +45,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=['x_square', 'circle', 'y_square', 'sign', 'sin'],
+    default=['circle', 'x_square', 'y_square', 'sign', 'sin'],
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(
@@ -54,7 +54,7 @@ parser.add_argument(
     type=str,
     nargs='*',
     choices=list(metrics),
-    default=['kb', 'sk', 'nn', 'kde'],
+    default=['kb', 'nn', 'kde', 'rdc'],
     help='the metric used to compute the correlations'
 )
 parser.add_argument(
@@ -70,7 +70,7 @@ parser.add_argument(
     '--data-seeds',
     type=int,
     nargs='+',
-    default=list(range(5)),
+    default=list(range(10)),
     help='the number of dataset variants per experiment'
 )
 parser.add_argument(
@@ -78,7 +78,7 @@ parser.add_argument(
     '--algorithm-seeds',
     type=int,
     nargs='+',
-    default=list(range(5)),
+    default=list(range(10)),
     help='the number of tests per experiment'
 )
 parser.add_argument(
