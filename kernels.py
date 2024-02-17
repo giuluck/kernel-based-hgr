@@ -70,7 +70,7 @@ parser.add_argument(
     '--metrics',
     type=str,
     nargs='*',
-    default=['kb-2', 'kb', 'nn'],
+    default=['kb', 'nn', 'kb-2'],
     help='the metric used to compute the correlations'
 )
 parser.add_argument(

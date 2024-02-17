@@ -4,7 +4,7 @@ import os
 import warnings
 
 from experiments import LearningExperiment
-from src.datasets import Communities, Adult, Census
+from src.datasets import Communities, Adult, Census, Students
 from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR, DensityHGR
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -19,7 +19,8 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
 datasets = dict(
     communities=Communities(),
     adult=Adult(),
-    census=Census()
+    census=Census(),
+    students=Students()
 )
 
 # list all the valid metrics
@@ -40,7 +41,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=list(datasets),
+    default=['communities', 'adult', 'census'],
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(

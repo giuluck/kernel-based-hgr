@@ -105,8 +105,7 @@ class CorrelationExperiment(Experiment):
             metric={(da, db): DoubleKernelHGR(degree_a=da, degree_b=db) for da in degrees_a for db in degrees_b}
         )
         # plot results
-        sns.set_context('notebook')
-        sns.set_style('whitegrid')
+        sns.set(context='poster', style='whitegrid', font_scale=1.8)
         for dataset in datasets:
             # build results
             results = np.zeros((len(degrees_a), len(degrees_b)))
@@ -115,14 +114,14 @@ class CorrelationExperiment(Experiment):
                     results[i, j] = experiments[(dataset.key, (da, db))].result['correlation']
             fig = plt.figure(figsize=(12, 9), tight_layout=True)
             ax = fig.gca()
-            col = ax.imshow(results.transpose()[::-1], cmap=plt.colormaps['gray'], vmin=vmin, vmax=vmax)
+            col = ax.imshow(results.transpose()[::-1], cmap=plt.colormaps['Greys'], vmin=vmin, vmax=vmax)
             fig.colorbar(col, ax=ax)
-            ax.set_xlabel('Degree A')
+            ax.set_xlabel('h')
             ax.set_xticks(np.arange(len(degrees_a) + 1) - 0.5)
             ax.set_xticklabels([''] * (len(degrees_a) + 1))
             ax.set_xticks(np.arange(len(degrees_a)), minor=True)
             ax.set_xticklabels(degrees_a, minor=True)
-            ax.set_ylabel('Degree B')
+            ax.set_ylabel('k', rotation=0, labelpad=20)
             ax.set_yticks(np.arange(len(degrees_b) + 1) - 0.5)
             ax.set_yticklabels([''] * (len(degrees_b) + 1))
             ax.set_yticks(np.arange(len(degrees_b)), minor=True)
@@ -168,14 +167,14 @@ class CorrelationExperiment(Experiment):
         for key, experiment in tqdm(experiments.items(), desc='Storing Correlations'):
             dataset, noise, seed = key[0]
             config = dict(dataset=dataset, noise=noise, metric=key[1], data_seed=seed, algorithm_seed=key[2])
-            results.append({
-                'correlation': experiment.result['correlation'],
-                'execution': experiment.result['execution'],
-                'split': 'train',
-                **config
-            })
+            if not test:
+                results.append({
+                    'correlation': experiment.result['correlation'],
+                    'execution': experiment.result['execution'],
+                    **config
+                })
             # build results for test data (use all the data seeds but the training one)
-            if test and isinstance(experiment.metric, KernelsHGR):
+            elif isinstance(experiment.metric, KernelsHGR):
                 for s in data_seeds:
                     if s == seed:
                         continue
@@ -185,90 +184,77 @@ class CorrelationExperiment(Experiment):
                     results.append({
                         'correlation': experiment.metric.kernels(a=x, b=y, experiment=experiment)[0],
                         'test_seed': s,
-                        'split': 'test',
                         **config
                     })
         results = pd.DataFrame(results)
         # plot results
-        sns.set_context('notebook')
-        sns.set_style('whitegrid')
-        plots = len(datasets)
-        rows = int(np.ceil((plots + 1) / columns))
-        fig = {'train': plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)}
-        if test:
-            fig['test'] = plt.figure(figsize=(4 * columns, 4 * rows), tight_layout=True)
-        for split, figure in fig.items():
-            handles, labels, ax = [], [], None
-            names = list(datasets.keys())[::-1]
-            for i in np.arange(plots) + 2:
-                name = names.pop()
-                ax = figure.add_subplot(rows, columns, i, sharex=ax, sharey=ax)
-                sns.lineplot(
-                    data=results[np.logical_and(results['dataset'] == name, results['split'] == split)],
-                    x='noise',
-                    y='correlation',
-                    hue='metric',
-                    style='metric',
-                    estimator='mean',
-                    errorbar='sd',
-                    palette=PALETTE[:len(metrics)],
-                    linewidth=2,
-                    ax=ax
-                )
-                handles, labels = ax.get_legend_handles_labels()
-                ax.get_legend().remove()
-                ax.set_xlabel('Noise Level $\sigma$')
-                ax.set_ylabel('Correlation')
-                ax.set_ylim((-0.1, 1.1))
-                # plot the original data without noise
-                sub_ax = inset_axes(ax, width='30%', height='30%', loc='upper right')
-                datasets[name](0.0, 0).plot(ax=sub_ax, color='black')
-                sub_ax.set_xticks([])
-                sub_ax.set_yticks([])
-            # plot the legend
-            ax = figure.add_subplot(rows, columns, 1)
-            ax.legend(handles, labels, loc='center', labelspacing=1.5, frameon=False)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.set_xticks([])
-            ax.set_yticks([])
-        # plot the time in a different figure
-        figure = plt.figure(figsize=(12, 12), tight_layout=True)
-        fig['time'] = figure
-        ax = figure.gca()
-        sns.barplot(
-            data=results[results['split'] == 'train'],
-            x='metric',
-            y='execution',
-            hue='metric',
-            estimator='mean',
-            errorbar='sd',
-            palette=PALETTE[:len(metrics)],
-            legend=False,
-            ax=ax
-        )
-        ax.set_xlabel(None)
-        ax.set_ylabel('Execution Time (s)')
-        ax.set_yscale('log')
+        sns.set(context='poster', style='whitegrid', font_scale=1.7)
+        # plot from 1 to D for test, while from 2 to D + 1 for train to leave the first subplot for the training times
+        plots = np.arange(len(datasets)) + (1 if test else 2)
+        rows = int(np.ceil(plots[-1] / columns))
+        fig = plt.figure(figsize=(9 * columns, 8.5 * rows), tight_layout=True)
+        handles, labels = [], []
+        names = list(datasets.keys())[::-1]
+        for i in plots:
+            name = names.pop()
+            ax = fig.add_subplot(rows, columns, i)
+            sns.lineplot(
+                data=results[results['dataset'] == name],
+                x='noise',
+                y='correlation',
+                hue='metric',
+                style='metric',
+                estimator='mean',
+                errorbar='sd',
+                palette=PALETTE[:len(metrics)],
+                linewidth=3,
+                ax=ax
+            )
+            handles, labels = ax.get_legend_handles_labels()
+            ax.get_legend().remove()
+            ax.set_xlabel('Noise Level $\sigma$')
+            ax.set_ylabel('Correlation')
+            ax.set_ylim((-0.1, 1.1))
+            # plot the original data without noise
+            sub_ax = inset_axes(ax, width='30%', height='30%', loc='upper right')
+            datasets[name](0.0, 0).plot(ax=sub_ax, linewidth=2, color='black')
+            sub_ax.set_xticks([])
+            sub_ax.set_yticks([])
+        # if train, plot times in the first subplot
+        if not test:
+            ax = fig.add_subplot(rows, columns, 1)
+            sns.barplot(
+                data=results,
+                x='metric',
+                y='execution',
+                hue='metric',
+                estimator='mean',
+                errorbar='sd',
+                linewidth=3,
+                palette=PALETTE[:len(metrics)],
+                legend=False,
+                ax=ax
+            )
+            for patch, handle in zip(ax.patches, handles):
+                patch.set_linestyle(handle.__dict__['_dash_pattern'])
+                color = patch.get_facecolor()
+                patch.set_edgecolor(color)
+                # fake transparency to white
+                color = tuple([0.8 * c + 0.2 for c in color[:3]] + [1])
+                patch.set_facecolor(color)
+            ax.set_xticks(labels, labels=labels, rotation=45)
+            ax.set_xlabel(None)
+            ax.set_ylabel('Execution Time (s)')
+            ax.set_yscale('log')
         # store, print, and plot if necessary
+        key = 'test' if test else 'train'
         for extension in formats:
-            package = 'experiments.exports'
-            for key, figure in fig.items():
-                with importlib.resources.path(package, f'correlations_{key}.{extension}') as file:
-                    figure.savefig(file, bbox_inches='tight')
+            with importlib.resources.path('experiments.exports', f'correlations_{key}.{extension}') as file:
+                fig.savefig(file, bbox_inches='tight')
         if plot:
-            titles = {
-                'train': 'Computed Correlations (Train)',
-                'test': 'Computed Correlations (Test)',
-                'time': 'Execution Times to Compute Correlations',
-            }
-            for key, figure in fig.items():
-                figure.suptitle(titles[key])
-                figure.show()
-        for figure in fig.values():
-            plt.close(figure)
+            fig.suptitle(f'Computed Correlations ({key.title()})')
+            fig.show()
+        plt.close(fig)
 
     @staticmethod
     def kernels(datasets: Iterable[Callable[[float], Deterministic]],
@@ -288,13 +274,14 @@ class CorrelationExperiment(Experiment):
             metric=metrics,
             seed=0
         )
+        sns.set(context='poster', style='white', font_scale=1.5)
         for dataset_fn, dataset in zip(datasets, datasets_0):
             # build and plot results
             a = dataset.excluded(backend='numpy')
             b = dataset.target(backend='numpy')
             fig, axes = plt.subplot_mosaic(
-                mosaic=[['A', 'A', 'data', 'B', 'B'], ['A', 'A', 'hgr', 'B', 'B']],
-                figsize=(15, 6),
+                mosaic=[['A', 'hgr'], ['data', 'B']],
+                figsize=(16, 16),
                 tight_layout=True
             )
             fa, gb = {'index': a}, {'index': b}
@@ -310,30 +297,31 @@ class CorrelationExperiment(Experiment):
                 fa[name], gb[name] = fa_current, gb_current
             fa, gb = pd.DataFrame(fa).set_index('index'), pd.DataFrame(gb).set_index('index')
             # plot kernels
-            sns.set_context('notebook')
-            sns.set_style('white')
+            handles = None
             for data, kernel, labels in zip([fa, gb], ['A', 'B'], [('a', 'f(a)'), ('b', 'g(b)')]):
                 ax = axes[kernel]
                 sns.lineplot(
                     data=data,
                     sort=True,
                     estimator=None,
+                    linewidth=3,
                     palette=PALETTE[:len(metrics)],
                     ax=ax
                 )
+                handles, _ = ax.get_legend_handles_labels()
                 ax.set_title(f'{kernel} Kernel')
                 ax.set_xlabel(labels[0])
-                ax.set_ylabel(labels[1], rotation=0, labelpad=15)
+                ax.set_ylabel(labels[1], rotation=0, labelpad=37)
                 ax.set_xticks([])
                 ax.set_yticks([])
                 ax.legend(loc='best')
             # plot data
             ax = axes['data']
-            kwargs = dict() if dataset.noise == 0.0 else dict(alpha=0.4, edgecolor='black')
+            kwargs = dict() if dataset.noise == 0.0 else dict(alpha=0.4, edgecolor='black', s=30)
             dataset.plot(ax=ax, color='black', **kwargs)
             ax.set_title('Data')
             ax.set_xlabel('a')
-            ax.set_ylabel('b', rotation=0, labelpad=7.5)
+            ax.set_ylabel('b', rotation=0, labelpad=20)
             ax.set_xticks([])
             ax.set_yticks([])
             # compute and plot correlations
@@ -359,13 +347,22 @@ class CorrelationExperiment(Experiment):
                 hue='metric',
                 estimator='mean',
                 errorbar='sd',
-                palette=PALETTE[:len(metrics)]
+                linewidth=3,
+                palette=PALETTE[:len(metrics)],
+                legend=None,
+                ax=ax
             )
+            for patches, handle in zip(np.reshape(ax.patches, (-1, 2)), handles):
+                for patch in patches:
+                    patch.set_linestyle(handle.__dict__['_dash_pattern'])
+                    color = patch.get_facecolor()
+                    patch.set_edgecolor(color)
+                    # fake transparency to white
+                    color = tuple([0.8 * c + 0.2 for c in color[:3]] + [1])
+                    patch.set_facecolor(color)
             ax.set_title('Correlation')
-            ax.get_legend().set_title(None)
             ax.set_xlabel(None)
             ax.set_ylabel(None)
-            ax.set_ylim((0, 1))
             # store and plot if necessary
             for extension in formats:
                 name = f'kernels_{dataset.key}.{extension}'

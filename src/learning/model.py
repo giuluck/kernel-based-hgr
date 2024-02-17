@@ -13,15 +13,13 @@ from src.hgr import HGR
 class MultiLayerPerceptron(pl.LightningModule):
     """Template class for a Multi-layer Perceptron in Pytorch Lightning."""
 
-    THRESHOLD: float = 0.3
-    """The threshold to be imposed in the penalty."""
-
     def __init__(self,
                  units: Iterable[int],
                  classification: bool,
                  feature: int,
                  metric: Optional[HGR] = None,
-                 alpha: Optional[float] = None):
+                 alpha: Optional[float] = None,
+                 threshold: float = 0.3):
         """
         :param units:
             The neural network hidden units.
@@ -38,6 +36,9 @@ class MultiLayerPerceptron(pl.LightningModule):
         :param alpha:
             The weight of the penalizer, or None for automatic weight regularization via lagrangian dual technique.
             If the penalty is None, must be None as well and it is ignored.
+
+        :param threshold:
+            The threshold for the penalty.
         """
         super(MultiLayerPerceptron, self).__init__()
 
@@ -72,6 +73,9 @@ class MultiLayerPerceptron(pl.LightningModule):
 
         self.alpha: Union[None, float, Variable] = alpha
         """The alpha value for balancing compiled and regularized loss."""
+
+        self.threshold: float = threshold
+        """The threshold for the penalty."""
 
         self.feature: int = feature
         """The index of the excluded feature."""
@@ -108,7 +112,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             reg_loss = torch.tensor(0.0)
         else:
             reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), kwargs=self._penalty_arguments)
-            reg = torch.maximum(torch.zeros(1), reg - MultiLayerPerceptron.THRESHOLD)
+            reg = torch.maximum(torch.zeros(1), reg - self.threshold)
             reg_loss = self.alpha * reg
             alpha = self.alpha
         # build the total minimization loss and perform the backward pass
@@ -121,7 +125,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             pred = self.model(inp)
             def_loss = self.loss(pred, out)
             reg = self.metric(a=inp[:, self.feature], b=pred.squeeze(), kwargs=self._penalty_arguments)
-            reg = torch.maximum(torch.zeros(1), reg - MultiLayerPerceptron.THRESHOLD)
+            reg = torch.maximum(torch.zeros(1), reg - self.threshold)
             reg_loss = self.alpha * reg
             tot_loss = def_loss + reg_loss
             self.manual_backward(tot_loss)

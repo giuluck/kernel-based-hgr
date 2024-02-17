@@ -1,6 +1,6 @@
 import importlib.resources
 from dataclasses import dataclass
-from typing import List, Any, Dict, Optional
+from typing import List, Any, Dict
 
 import pandas as pd
 

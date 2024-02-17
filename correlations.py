@@ -84,7 +84,7 @@ parser.add_argument(
 parser.add_argument(
     '--test',
     action='store_true',
-    help='whether to compute the correlations on test data as well'
+    help='whether to compute the correlations on test data'
 )
 parser.add_argument(
     '-c',

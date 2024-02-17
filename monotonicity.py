@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from experiments import CorrelationExperiment
-from src.datasets import Polynomial, NonLinear, Communities, Adult, Census
+from src.datasets import Polynomial, NonLinear, Communities, Adult, Census, Students
 
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
@@ -13,6 +13,7 @@ datasets = dict(
     adult=Adult(),
     census=Census(),
     communities=Communities(),
+    students=Students(),
     linear=Polynomial(degree_x=1, degree_y=1, noise=0.0),
     x_square=Polynomial(degree_x=2, degree_y=1, noise=0.0),
     x_cubic=Polynomial(degree_x=3, degree_y=1, noise=0.0),
@@ -33,7 +34,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=['communities', 'adult', 'census'],
+    default=['communities', 'census'],
     help='the dataset on which to run the experiment'
 )
 parser.add_argument(

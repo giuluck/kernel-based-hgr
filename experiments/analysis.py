@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pytorch_lightning as pl
 import seaborn as sns
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from scipy.stats import pearsonr
 
 from experiments import Experiment
 from src.datasets import Dataset
@@ -184,3 +186,54 @@ class AnalysisExperiment(Experiment):
                 if plot:
                     fig.suptitle(f"Causal Analysis for {ds.title()} dataset")
                     fig.show()
+
+    @staticmethod
+    def example(dataset: Dataset,
+                degree_a: int = 2,
+                degree_b: int = 2,
+                formats: Iterable[str] = ('png',),
+                plot: bool = False):
+        # compute correlations and kernels
+        a, b = dataset.excluded(backend='numpy'), dataset.target(backend='numpy')
+        hgr, kernels = DoubleKernelHGR(degree_a=degree_a, degree_b=degree_b).correlation(a, b)
+        fa = DoubleKernelHGR.kernel(a, degree=degree_a, use_torch=False) @ kernels['alpha']
+        gb = DoubleKernelHGR.kernel(b, degree=degree_b, use_torch=False) @ kernels['beta']
+        # build canvas
+        sns.set(context='poster', style='white', font_scale=1.3)
+        fig = plt.figure(figsize=(20, 10))
+        ax = fig.gca()
+        ax.axis('off')
+        ax.set_xlim((0, 1))
+        ax.set_ylim((0, 1))
+        # build axes
+        axes = {
+            'data': ('center left', 'a', 'b', 14, f'Correlation: {abs(pearsonr(a, b)[0]):.3f}'),
+            'fa': ('upper center', 'a', 'f(a)', 30, f"α = {kernels['alpha'].round(2)}"),
+            'gb': ('lower center', 'b', 'g(b)', 34, f"β = {kernels['beta'].round(2)}"),
+            'proj': ('center right', 'f(a)', 'g(b)', 34, f'Correlation: {hgr:.3f}')
+        }
+        for key, (loc, xl, yl, lp, tl) in axes.items():
+            x = inset_axes(ax, width='20%', height='40%', loc=loc)
+            x.set_title(tl, pad=12)
+            x.set_xlabel(xl, labelpad=8)
+            x.set_ylabel(yl, rotation=0, labelpad=lp)
+            x.set_xticks([])
+            x.set_yticks([])
+            axes[key] = x
+        # build arrows
+        ax.arrow(0.23, 0.57, 0.14, 0.1, color='black', linewidth=2, head_width=0.015)
+        ax.arrow(0.23, 0.43, 0.14, -0.1, color='black', linewidth=2, head_width=0.015)
+        ax.arrow(0.62, 0.70, 0.14, -0.1, color='black', linewidth=2, head_width=0.015)
+        ax.arrow(0.62, 0.30, 0.14, 0.1, color='black', linewidth=2, head_width=0.015)
+        # plot data, kernels, and projections
+        dataset.plot(ax=axes['data'], color='black', edgecolor='black', alpha=0.6, s=10)
+        sns.lineplot(x=a, y=fa, sort=True, linewidth=2, color='black', ax=axes['fa'])
+        sns.lineplot(x=b, y=gb, sort=True, linewidth=2, color='black', ax=axes['gb'])
+        axes['proj'].scatter(fa, gb, color='black', edgecolor='black', alpha=0.6, s=10)
+        # store and plot if necessary
+        for extension in formats:
+            name = f'example.{extension}'
+            with importlib.resources.path('experiments.exports', name) as file:
+                fig.savefig(file, bbox_inches='tight')
+        if plot:
+            fig.show()

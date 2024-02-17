@@ -64,7 +64,7 @@ class Dataset(Cacheable):
         pass
 
     def data(self, folds: int, seed: int) -> List[Tuple[pd.DataFrame, pd.DataFrame]]:
-        """Returns a list of tuples <train, val> (if folds == 1, splits between 70% train and 30% test)."""
+        """Returns a list of tuples <train, val> (if folds == 1, splits between train and test)."""
         data = self._data
         if folds == 1:
             stratify = data[self.target_name] if self.classification else None

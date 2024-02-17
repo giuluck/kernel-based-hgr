@@ -4,7 +4,7 @@ import os
 import warnings
 
 from experiments import LearningExperiment
-from src.datasets import *
+from src.datasets import Communities, Adult, Census, Students
 
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -18,7 +18,8 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
 datasets = dict(
     communities=Communities(),
     adult=Adult(),
-    census=Census()
+    census=Census(),
+    students=Students()
 )
 
 # list the default units to be used in case no units are passed
@@ -32,7 +33,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=list(datasets),
+    default=['communities', 'adult', 'census'],
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(

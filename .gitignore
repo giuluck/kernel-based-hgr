@@ -4,6 +4,7 @@ __pycache__
 venv
 temp
 wandb
+data/students.csv
 experiments/exports/*
 experiments/results/*
 !experiments/exports/*.py

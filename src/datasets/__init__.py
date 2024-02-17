@@ -3,3 +3,4 @@ from src.datasets.census import Census
 from src.datasets.communities import Communities
 from src.datasets.dataset import Dataset, SurrogateDataset
 from src.datasets.deterministic import Deterministic, Polynomial, NonLinear
+from src.datasets.students import Students

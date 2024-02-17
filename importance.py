@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from experiments import AnalysisExperiment
-from src.datasets import *
+from src.datasets import Communities, Adult, Census, Students
 
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
@@ -12,7 +12,8 @@ log.setLevel(logging.ERROR)
 datasets = dict(
     communities=Communities(),
     adult=Adult(),
-    census=Census()
+    census=Census(),
+    students=Students()
 )
 
 # build argument parser
@@ -23,7 +24,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=list(datasets),
+    default=['communities', 'adult', 'census'],
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(
@@ -57,7 +58,7 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
-print("Starting experiment 'calibration'...")
+print("Starting experiment 'importance'...")
 for k, v in args.items():
     print('  >', k, '-->', v)
 print()
