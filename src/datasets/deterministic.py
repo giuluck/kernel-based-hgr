@@ -36,8 +36,12 @@ class Deterministic(Dataset, ABC):
         return False
 
     @property
-    def hidden(self) -> List[int]:
+    def units(self) -> List[int]:
         return []
+
+    @property
+    def threshold(self) -> float:
+        return 0.0
 
     @property
     def excluded_name(self) -> str:

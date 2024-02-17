@@ -59,8 +59,12 @@ class Students(Dataset):
         return False
 
     @property
-    def hidden(self) -> List[int]:
+    def units(self) -> List[int]:
         raise NotImplementedError()
+
+    @property
+    def threshold(self) -> float:
+        return 0.2
 
     @property
     def excluded_name(self) -> str:

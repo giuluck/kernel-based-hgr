@@ -30,7 +30,6 @@ metrics = dict(
     kde=('HGR-KDE', DensityHGR())
 )
 
-
 # build argument parser
 parser = argparse.ArgumentParser(description='Train multiple neural networks using different HGR metrics as penalizers')
 parser.add_argument(
@@ -84,13 +83,9 @@ parser.add_argument(
     '--formats',
     type=str,
     nargs='*',
-    default=['png'],
+    choices=['csv', 'tex'],
+    default=['csv'],
     help='the extensions of the files to save'
-)
-parser.add_argument(
-    '--plot',
-    action='store_true',
-    help='whether to plot the results'
 )
 
 # parse arguments, build experiments, then export the results
@@ -101,4 +96,4 @@ for k, v in args.items():
 print()
 args['datasets'] = {k: datasets[k] for k in args['datasets']}
 args['metrics'] = {k: v for k, v in [metrics[m] for m in args['metrics']]}
-LearningExperiment.history(**args)
+LearningExperiment.results(**args)

@@ -25,11 +25,15 @@ class Communities(SurrogateDataset):
         return 'communities'
 
     @property
+    def threshold(self) -> float:
+        return 0.3
+
+    @property
     def classification(self) -> bool:
         return False
 
     @property
-    def hidden(self) -> List[int]:
+    def units(self) -> List[int]:
         return [256, 256]
 
     @property

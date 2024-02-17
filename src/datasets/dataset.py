@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Union, Literal, List, Tuple, Optional
+from typing import Union, Literal, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,8 +43,14 @@ class Dataset(Cacheable):
 
     @property
     @abstractmethod
-    def hidden(self) -> List[int]:
+    def units(self) -> List[int]:
         """The number of hidden units in the neural model trained on the dataset."""
+        pass
+
+    @property
+    @abstractmethod
+    def threshold(self) -> float:
+        """The penalty threshold when learning a constrained model."""
         pass
 
     @property

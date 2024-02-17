@@ -9,6 +9,7 @@ from src.datasets.dataset import SurrogateDataset
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class Adult(SurrogateDataset):
+
     def _load(self) -> pd.DataFrame:
         with importlib.resources.path('data', 'adult.csv') as filepath:
             data = pd.read_csv(filepath).astype(float)
@@ -27,8 +28,12 @@ class Adult(SurrogateDataset):
         return True
 
     @property
-    def hidden(self) -> List[int]:
+    def units(self) -> List[int]:
         return [32, 32]
+
+    @property
+    def threshold(self) -> float:
+        return 0.2
 
     @property
     def excluded_name(self) -> str:

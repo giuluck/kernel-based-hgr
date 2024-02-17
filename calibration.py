@@ -41,12 +41,11 @@ parser.add_argument(
     '--batches',
     type=int,
     nargs='*',
-    default=[1, 5, 20],
+    default=[512, 4096, -1],
     help='the number of batches used during training (e.g., 1 for full batch)'
 )
 parser.add_argument(
     '-u',
-    '--hiddens',
     '--units',
     nargs='*',
     type=int,
@@ -72,7 +71,7 @@ parser.add_argument(
     '--wandb-project',
     type=str,
     nargs='?',
-    help='the name of the Weights & Biases project for logging, or None for no logging.'
+    help='the name of the Weights & Biases project for logging, or None for no logging'
 )
 parser.add_argument(
     '-f',
@@ -90,7 +89,7 @@ parser.add_argument(
 
 # parse arguments, build experiments, then export the results
 args = parser.parse_args().__dict__
-args['hiddens'] = units if args['hiddens'] is None else args['hiddens']
+args['units'] = units if args['units'] is None else args['units']
 print("Starting experiment 'calibration'...")
 for k, v in args.items():
     print('  >', k, '-->', v)

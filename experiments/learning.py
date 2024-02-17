@@ -1,5 +1,4 @@
 import importlib.resources
-import math
 import os
 import pickle
 import time
@@ -61,22 +60,17 @@ class LearningExperiment(Experiment):
     metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The metric to be used as penalty, or None for unconstrained model."""
 
-    hidden: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    units: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of hidden units used to build the neural model, or None to use the dataset default value."""
 
-    batches: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The number of batches used during training (e.g., 1 for full batch)."""
+    batch: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The batch size used for training, or -1 for full batch."""
 
     steps: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of training steps."""
 
     wandb_project: Optional[str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The name of the Weights & Biases project for logging, or None for no logging."""
-
-    @property
-    def units(self) -> List[int]:
-        hidden = self.dataset.hidden if self.hidden is None else self.hidden
-        return [len(self.dataset.input_names), *hidden]
 
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
@@ -85,8 +79,9 @@ class LearningExperiment(Experiment):
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
         val_data = Data(x=val[self.dataset.input_names], y=val[self.dataset.target_name])
         # build model
+        units = self.dataset.units if self.units is None else self.units
         model = MultiLayerPerceptron(
-            units=self.units,
+            units=[len(self.dataset.input_names), *units],
             classification=self.dataset.classification,
             feature=self.dataset.excluded_index,
             metric=self.metric,
@@ -116,7 +111,7 @@ class LearningExperiment(Experiment):
             enable_model_summary=False
         )
         # run fitting
-        batch_size = int(math.ceil(len(trn_data) / self.batches))
+        batch_size = len(trn_data) if self.batch == -1 else self.batch
         start = time.time()
         trainer.fit(
             model=model,
@@ -151,9 +146,9 @@ class LearningExperiment(Experiment):
             experiment=self.name,
             dataset=self.dataset.configuration,
             metric={'name': 'unc'} if self.metric is None else self.metric.configuration,
-            units=self.units,
             steps=self.steps,
-            batches=self.batches,
+            units=self.units,
+            batch=self.batch,
             folds=self.folds,
             fold=self.fold,
         )
@@ -161,32 +156,32 @@ class LearningExperiment(Experiment):
     @property
     def key(self) -> str:
         mtr = None if self.metric is None else self.metric.key
-        return f'{self.name}_{self.dataset.key}_{mtr}_{self.units}_{self.steps}_{self.batches}_{self.folds}_{self.fold}'
+        return f'{self.name}_{self.dataset.key}_{mtr}__{self.steps}{self.units}_{self.batch}_{self.folds}_{self.fold}'
 
     @staticmethod
     def calibration(datasets: Dict[str, SurrogateDataset],
-                    batches: Iterable[int] = (1, 5, 20),
-                    hiddens: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
+                    batches: Iterable[int] = (512, 4096, -1),
+                    units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
                     steps: int = 1000,
                     folds: int = 3,
                     wandb_project: Optional[str] = None,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
-        def configuration(ds, bt, hd, fl):
+        def configuration(ds, bt, ut, fl):
             classification = datasets[ds].classification
-            return dict(dataset=ds, batch=bt, hidden=hd, fold=fl), [
+            return dict(dataset=ds, batch=bt, units=ut, fold=fl), [
                 Loss(classification=classification),
                 Accuracy(classification=classification)
             ]
 
-        hiddens = [list(h) for h in hiddens]
+        units = [list(u) for u in units]
         experiments = LearningExperiment.doe(
             file_name='learning',
             save_time=0,
             verbose=True,
             dataset=datasets,
-            batches={b: b for b in batches},
-            hidden={str(h): h for h in hiddens},
+            batch={b: b for b in batches},
+            units={str(u): u for u in units},
             fold=list(range(folds)),
             folds=folds,
             steps=steps,
@@ -210,15 +205,15 @@ class LearningExperiment(Experiment):
         sns.set_context('notebook')
         sns.set_style('whitegrid')
         for (dataset, kpi), data in results.groupby(['dataset', 'kpi']):
-            cl = len(hiddens)
+            cl = len(units)
             rw = len(batches)
             fig, axes = plt.subplots(rw, cl, figsize=(5 * cl, 4 * rw), sharex='all', sharey='all', tight_layout=True)
             # used to index the axes in case either or both hidden units and batches have only one value
             axes = np.array(axes).reshape(rw, cl)
             for i, batch in enumerate(batches):
-                for j, hidden in enumerate(hiddens):
+                for j, unit in enumerate(units):
                     sns.lineplot(
-                        data=data[np.logical_and(data['batch'] == batch, data['hidden'] == str(hidden))],
+                        data=data[np.logical_and(data['batch'] == batch, data['units'] == str(unit))],
                         x='step',
                         y='value',
                         hue='split',
@@ -231,7 +226,7 @@ class LearningExperiment(Experiment):
                     )
                     axes[i, j].set_ylabel(kpi)
                     axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'ACC'] else data[data['step'] > 20]['value'].max()))
-                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Hidden: {hidden}")
+                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {units}")
             # store, print, and plot if necessary
             for extension in formats:
                 name = f'calibration_{kpi}_{dataset}.{extension}'
@@ -244,123 +239,184 @@ class LearningExperiment(Experiment):
 
     @staticmethod
     def history(datasets: Dict[str, SurrogateDataset],
-                metrics: Dict[str, Optional[HGR]],
-                batches: Iterable[int] = (1, 10),
+                metrics: Dict[str, HGR],
+                batch: int = 2048,
                 steps: int = 600,
                 folds: int = 3,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
+        metrics = {'UNC': None, **metrics}
+
         def configuration(ds, mt, fl):
             d = datasets[ds]
-            # include the DIDI on surrogate excluded index only if present
-            s = [] if d.surrogate_name is None else [DIDI(
-                excluded=d.surrogate_index,
-                classification=d.classification,
-                name=f'Surrogate DIDI'
-            )]
             # return a list of metrics for loss, accuracy, correlation, and optionally surrogate fairness
             return dict(dataset=ds, metric=mt, fold=fl), [
                 Loss(classification=d.classification),
                 Accuracy(classification=d.classification),
                 Correlation(excluded=d.excluded_index, algorithm='sk', name=f'Protected HGR'),
-                *s
+                DIDI(excluded=d.surrogate_index, classification=d.classification, name=f'Surrogate DIDI')
             ]
 
         sns.set_context('notebook')
         sns.set_style('whitegrid')
         # iterate over dataset and batches
         for name, dataset in datasets.items():
-            for batch in batches:
-                # use dictionaries for dataset to retrieve correct configuration
-                experiments = LearningExperiment.doe(
-                    file_name='learning',
-                    save_time=0,
-                    verbose=True,
-                    dataset={name: dataset},
-                    metric=metrics,
-                    fold=list(range(folds)),
-                    folds=folds,
-                    hidden=None,
-                    steps=steps,
-                    batches=batch,
-                    wandb_project=wandb_project
-                )
-                # get and plot metric results
-                group = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
-                kpis = group['kpi'].unique()
-                col = len(kpis) + 1
-                fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey=None, tight_layout=True)
-                for i, sp in enumerate(['Train', 'Val']):
-                    for j, kpi in enumerate(kpis):
-                        sns.lineplot(
-                            data=group[np.logical_and(group['split'] == sp, group['kpi'] == kpi)],
-                            x='step',
-                            y='value',
-                            estimator='mean',
-                            errorbar='sd',
-                            linewidth=2,
-                            hue='metric',
-                            style='metric',
-                            palette=PALETTE[:len(metrics)],
-                            ax=axes[i, j]
-                        )
-                        axes[i, j].set_title(f"{kpi} ({sp.lower()})")
-                        if i == 1:
-                            ub = axes[1, j].get_ylim()[1] if kpi == 'MSE' or kpi == 'BCE' or 'DIDI' in kpi else 1
-                            axes[0, j].set_ylim((0, ub))
-                            axes[1, j].set_ylim((0, ub))
-                # get and plot history results (alpha and time)
-                history = []
-                to_remove = []
-                for (_, mtr, fld), experiment in experiments.items():
-                    result = experiment.result
-                    times = result['time']
-                    if experiment.metric is None:
-                        alphas = [np.nan] * len(result['alpha'])
-                        to_remove.append(mtr)
-                    else:
-                        alphas = result['alpha']
-                    history.extend([{
-                        'metric': mtr,
-                        'fold': fld,
-                        'step': step,
-                        'Training Time (s)': times[step],
-                        'Lambda Weight': alphas[step]
-                    } for step in range(experiment.steps)])
-                history = pd.DataFrame(history)
-                for i, col in enumerate(['Training Time (s)', 'Lambda Weight']):
+            # use dictionaries for dataset to retrieve correct configuration
+            experiments = LearningExperiment.doe(
+                file_name='learning',
+                save_time=0,
+                verbose=True,
+                dataset={name: dataset},
+                metric=metrics,
+                fold=list(range(folds)),
+                folds=folds,
+                units=None,
+                batch=batch,
+                steps=steps,
+                wandb_project=wandb_project
+            )
+            # get and plot metric results
+            group = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
+            kpis = group['kpi'].unique()
+            col = len(kpis) + 1
+            fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey=None, tight_layout=True)
+            for i, sp in enumerate(['Train', 'Val']):
+                for j, kpi in enumerate(kpis):
                     sns.lineplot(
-                        data=history,
+                        data=group[np.logical_and(group['split'] == sp, group['kpi'] == kpi)],
                         x='step',
-                        y=col,
+                        y='value',
                         estimator='mean',
                         errorbar='sd',
                         linewidth=2,
                         hue='metric',
                         style='metric',
                         palette=PALETTE[:len(metrics)],
-                        ax=axes[i, -1]
+                        ax=axes[i, j]
                     )
-                    axes[i, -1].set_title(col)
-                    axes[i, -1].set_ylabel(None)
-                # QUICK PATCH TO REMOVE UNCONSTRAINED EXPERIMENTS FROM ALPHA LEGEND
-                leg = axes[1, -1].legend()
-                for handle, text in zip(leg.legendHandles, leg.texts):
-                    # noinspection PyProtectedMember
-                    if handle._label in to_remove and text._text in to_remove:
-                        handle.set_visible(False)
-                        text.set_visible(False)
-                leg.set_title('metric')
-                # store, print, and plot if necessary
-                for extension in formats:
-                    filename = f'history_{name}_{batch}.{extension}'
-                    with importlib.resources.path('experiments.exports', filename) as file:
-                        fig.savefig(file, bbox_inches='tight')
-                if plot:
-                    fig.suptitle(f"Learning History for {name.title()} (batches={batch})")
-                    fig.show()
-                plt.close(fig)
+                    axes[i, j].set_title(f"{kpi} ({sp.lower()})")
+                    if i == 1:
+                        ub = axes[1, j].get_ylim()[1] if kpi == 'MSE' or kpi == 'BCE' or 'DIDI' in kpi else 1
+                        axes[0, j].set_ylim((0, ub))
+                        axes[1, j].set_ylim((0, ub))
+            # get and plot history results (alpha and time)
+            history = []
+            to_remove = []
+            for (_, mtr, fld), experiment in experiments.items():
+                result = experiment.result
+                times = result['time']
+                if experiment.metric is None:
+                    alphas = [np.nan] * len(result['alpha'])
+                    to_remove.append(mtr)
+                else:
+                    alphas = result['alpha']
+                history.extend([{
+                    'metric': mtr,
+                    'fold': fld,
+                    'step': step,
+                    'Training Time (s)': times[step],
+                    'Lambda Weight': alphas[step]
+                } for step in range(experiment.steps)])
+            history = pd.DataFrame(history)
+            for i, col in enumerate(['Training Time (s)', 'Lambda Weight']):
+                sns.lineplot(
+                    data=history,
+                    x='step',
+                    y=col,
+                    estimator='mean',
+                    errorbar='sd',
+                    linewidth=2,
+                    hue='metric',
+                    style='metric',
+                    palette=PALETTE[:len(metrics)],
+                    ax=axes[i, -1]
+                )
+                axes[i, -1].set_title(col)
+                axes[i, -1].set_ylabel(None)
+            # QUICK PATCH TO REMOVE UNCONSTRAINED EXPERIMENTS FROM ALPHA LEGEND
+            leg = axes[1, -1].legend()
+            for handle, text in zip(leg.legendHandles, leg.texts):
+                # noinspection PyProtectedMember
+                if handle._label in to_remove and text._text in to_remove:
+                    handle.set_visible(False)
+                    text.set_visible(False)
+            leg.set_title('metric')
+            # store, print, and plot if necessary
+            for extension in formats:
+                filename = f'history_{name}.{extension}'
+                with importlib.resources.path('experiments.exports', filename) as file:
+                    fig.savefig(file, bbox_inches='tight')
+            if plot:
+                fig.suptitle(f"Learning History for {name.title()}")
+                fig.show()
+            plt.close(fig)
+
+    @staticmethod
+    def results(datasets: Dict[str, SurrogateDataset],
+                metrics: Dict[str, Optional[HGR]],
+                batch: int = 2048,
+                steps: int = 600,
+                folds: int = 3,
+                wandb_project: Optional[str] = None,
+                formats: Iterable[str] = ('csv',)):
+        # run experiments
+        metrics = {'UNC': None, **metrics}
+        experiments = LearningExperiment.doe(
+            file_name='learning',
+            save_time=0,
+            verbose=True,
+            dataset=datasets,
+            metric=metrics,
+            fold=list(range(folds)),
+            folds=folds,
+            units=None,
+            batch=batch,
+            steps=steps,
+            wandb_project=wandb_project
+        )
+        group = []
+        # retrieve results
+        for (ds, mt, fl), experiment in tqdm(experiments.items(), desc='Computing KPIs'):
+            dataset = datasets[ds]
+            kpis = [
+                Accuracy(classification=dataset.classification, name='SCORE'),
+                Correlation(excluded=dataset.excluded_index, algorithm='kb', name=f'HGR'),
+                DIDI(excluded=dataset.surrogate_index, classification=dataset.classification, name=f'DIDI')
+            ]
+            configuration = dict(dataset=ds, metric=mt)
+            results = experiment.result(external=True)
+            history = results['history'][experiment.steps - 1]
+            group.append({**configuration, 'split': 'train', 'kpi': 'Time', 'value': results['execution']})
+            for split in ['train', 'val']:
+                x = results[f'{split}_inputs'].numpy(force=True)
+                y = results[f'{split}_target'].numpy(force=True).flatten()
+                p = history[f'{split}_predictions'].numpy(force=True).flatten()
+                for kpi in kpis:
+                    group.append({**configuration, 'split': split, 'kpi': kpi.name, 'value': kpi(x=x, y=y, p=p)})
+        group = pd.DataFrame(group)
+        group = group.groupby(['dataset', 'metric', 'split', 'kpi'], as_index=False).agg(['mean', 'std'])
+        group.columns = ['dataset', 'metric', 'split', 'kpi', 'mean', 'std']
+        group['text'] = [f"{row['mean']:.2f} ± {row['std']:.2f}" for _, row in group.iterrows()]
+        group = group.pivot(index=['dataset', 'metric'], columns=['kpi', 'split']).reorder_levels([1, 2, 0], axis=1)
+        group = group.reindex(index=[(d, m) for d in datasets.keys() for m in metrics.keys()])
+        columns = [(kpi, split, agg)
+                   for kpi in ['SCORE', 'HGR', 'DIDI']
+                   for split in ['train', 'val']
+                   for agg in ['mean', 'std', 'text']]
+        group = group.reindex(columns=columns + [('Time', 'train', agg) for agg in ['mean', 'std', 'text']])
+        if len(metrics) == 1:
+            group = group.droplevel(1)
+        if len(datasets) == 1:
+            group = group.droplevel(0)
+        if 'csv' in formats:
+            df = group[(c for c in group.columns if c[2] != 'text')]
+            with importlib.resources.path('experiments.exports', f'results.csv') as filepath:
+                df.to_csv(filepath, header=True, index=True)
+        if 'tex' in formats:
+            df = group[(c for c in group.columns if c[2] == 'text')].droplevel(2, axis=1)
+            with importlib.resources.path('experiments.exports', f'results.tex') as filepath:
+                df.to_latex(filepath, multicolumn=True, multirow=True, multicolumn_format='c')
 
     @staticmethod
     def _metrics(experiments: Dict[Any, 'LearningExperiment'],
