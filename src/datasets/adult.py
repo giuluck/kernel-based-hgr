@@ -32,6 +32,10 @@ class Adult(SurrogateDataset):
         return [32, 32]
 
     @property
+    def batch(self) -> int:
+        return 2048
+
+    @property
     def threshold(self) -> float:
         return 0.2
 

@@ -28,16 +28,20 @@ class Census(SurrogateDataset):
         return 'census'
 
     @property
-    def threshold(self) -> float:
-        return 0.4
-
-    @property
     def classification(self) -> bool:
         return False
 
     @property
     def units(self) -> List[int]:
         return [32]
+
+    @property
+    def batch(self) -> int:
+        return 2048
+
+    @property
+    def threshold(self) -> float:
+        return 0.4
 
     @property
     def excluded_name(self) -> str:

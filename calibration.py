@@ -63,7 +63,7 @@ parser.add_argument(
     '-k',
     '--folds',
     type=int,
-    default=3,
+    default=5,
     help='the number of folds to be used for cross-validation'
 )
 parser.add_argument(

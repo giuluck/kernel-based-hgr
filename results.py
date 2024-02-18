@@ -4,9 +4,10 @@ import os
 import warnings
 
 from experiments import LearningExperiment
-from src.datasets import Communities, Adult, Census
+from src.datasets import Communities, Adult, Census, Students
 from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR, DensityHGR
 
+# noinspection DuplicatedCode
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore", ".*does not have many workers.*")
@@ -19,7 +20,8 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
 datasets = dict(
     communities=Communities(),
     adult=Adult(),
-    census=Census()
+    census=Census(),
+    students=Students()
 )
 
 # list all the valid metrics
@@ -54,21 +56,14 @@ parser.add_argument(
     '-s',
     '--steps',
     type=int,
-    default=600,
+    default=500,
     help='the number of steps to run for each network'
-)
-parser.add_argument(
-    '-b',
-    '--batch',
-    type=int,
-    default=2048,
-    help='the batch size used for training, or -1 for full batch'
 )
 parser.add_argument(
     '-k',
     '--folds',
     type=int,
-    default=3,
+    default=5,
     help='the number of folds to be used for cross-validation'
 )
 parser.add_argument(

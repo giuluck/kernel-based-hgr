@@ -39,9 +39,6 @@ PALETTE: List[str] = [
 SEED: int = 0
 """The random seed used in the experiment."""
 
-ALPHA: Optional[float] = None
-"""The alpha value used in the experiment."""
-
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class LearningExperiment(Experiment):
@@ -60,17 +57,44 @@ class LearningExperiment(Experiment):
     metric: Optional[HGR] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The metric to be used as penalty, or None for unconstrained model."""
 
-    units: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    _units: Optional[Iterable[int]] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of hidden units used to build the neural model, or None to use the dataset default value."""
 
-    batch: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
-    """The batch size used for training, or -1 for full batch."""
+    _batch: Optional[int] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The batch size used for training (-1 for full batch), or None to use the dataset default value."""
+
+    _alpha: Optional[float] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The alpha value used in the experiment."""
+
+    _threshold: Optional[float] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
+    """The penalty threshold used during training, or None to use the dataset default value."""
 
     steps: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The number of training steps."""
 
     wandb_project: Optional[str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The name of the Weights & Biases project for logging, or None for no logging."""
+
+    @property
+    def units(self) -> Iterable[int]:
+        return self.dataset.units if self._units is None else self._units
+
+    @property
+    def batch(self) -> int:
+        return self.dataset.batch if self._batch is None else self._batch
+
+    @property
+    def alpha(self) -> Optional[float]:
+        return None if self.metric is None else self._alpha
+
+    @property
+    def threshold(self) -> float:
+        if self.metric is None:
+            return 0.0
+        elif self._threshold is None:
+            return self.dataset.threshold
+        else:
+            return self._threshold
 
     def _compute(self) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
@@ -79,13 +103,13 @@ class LearningExperiment(Experiment):
         trn_data = Data(x=trn[self.dataset.input_names], y=trn[self.dataset.target_name])
         val_data = Data(x=val[self.dataset.input_names], y=val[self.dataset.target_name])
         # build model
-        units = self.dataset.units if self.units is None else self.units
         model = MultiLayerPerceptron(
-            units=[len(self.dataset.input_names), *units],
+            units=[len(self.dataset.input_names), *self.units],
             classification=self.dataset.classification,
             feature=self.dataset.excluded_index,
             metric=self.metric,
-            alpha=None if self.metric is None else ALPHA
+            alpha=self.alpha,
+            threshold=self.threshold
         )
         # build trainer and callback
         progress = Progress()
@@ -149,21 +173,24 @@ class LearningExperiment(Experiment):
             steps=self.steps,
             units=self.units,
             batch=self.batch,
+            alpha=self.alpha,
+            threshold=self.threshold,
             folds=self.folds,
             fold=self.fold,
         )
 
     @property
     def key(self) -> str:
-        mtr = None if self.metric is None else self.metric.key
-        return f'{self.name}_{self.dataset.key}_{mtr}__{self.steps}{self.units}_{self.batch}_{self.folds}_{self.fold}'
+        metric = 'unc' if self.metric is None else self.metric.key
+        return (f'{self.name}_{self.dataset.key}_{metric}_{self.steps}_{self.units}_{self.batch}_{self.alpha}_'
+                f'{self.threshold}_{self.folds}_{self.fold}')
 
     @staticmethod
     def calibration(datasets: Dict[str, SurrogateDataset],
                     batches: Iterable[int] = (512, 4096, -1),
                     units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
                     steps: int = 1000,
-                    folds: int = 3,
+                    folds: int = 5,
                     wandb_project: Optional[str] = None,
                     formats: Iterable[str] = ('png',),
                     plot: bool = False):
@@ -180,8 +207,10 @@ class LearningExperiment(Experiment):
             save_time=0,
             verbose=True,
             dataset=datasets,
-            batch={b: b for b in batches},
-            units={str(u): u for u in units},
+            _batch={b: b for b in batches},
+            _units={str(u): u for u in units},
+            _threshold=0.0,
+            _alpha=None,
             fold=list(range(folds)),
             folds=folds,
             steps=steps,
@@ -226,7 +255,7 @@ class LearningExperiment(Experiment):
                     )
                     axes[i, j].set_ylabel(kpi)
                     axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'ACC'] else data[data['step'] > 20]['value'].max()))
-                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {units}")
+                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {unit}")
             # store, print, and plot if necessary
             for extension in formats:
                 name = f'calibration_{kpi}_{dataset}.{extension}'
@@ -240,9 +269,8 @@ class LearningExperiment(Experiment):
     @staticmethod
     def history(datasets: Dict[str, SurrogateDataset],
                 metrics: Dict[str, HGR],
-                batch: int = 2048,
-                steps: int = 600,
-                folds: int = 3,
+                steps: int = 500,
+                folds: int = 5,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
@@ -271,8 +299,10 @@ class LearningExperiment(Experiment):
                 metric=metrics,
                 fold=list(range(folds)),
                 folds=folds,
-                units=None,
-                batch=batch,
+                _units=None,
+                _batch=None,
+                _alpha=None,
+                _threshold=None,
                 steps=steps,
                 wandb_project=wandb_project
             )
@@ -355,9 +385,8 @@ class LearningExperiment(Experiment):
     @staticmethod
     def results(datasets: Dict[str, SurrogateDataset],
                 metrics: Dict[str, Optional[HGR]],
-                batch: int = 2048,
-                steps: int = 600,
-                folds: int = 3,
+                steps: int = 500,
+                folds: int = 5,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('csv',)):
         # run experiments
@@ -370,8 +399,10 @@ class LearningExperiment(Experiment):
             metric=metrics,
             fold=list(range(folds)),
             folds=folds,
-            units=None,
-            batch=batch,
+            _units=None,
+            _batch=None,
+            _alpha=None,
+            _threshold=None,
             steps=steps,
             wandb_project=wandb_project
         )

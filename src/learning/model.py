@@ -17,9 +17,9 @@ class MultiLayerPerceptron(pl.LightningModule):
                  units: Iterable[int],
                  classification: bool,
                  feature: int,
-                 metric: Optional[HGR] = None,
-                 alpha: Optional[float] = None,
-                 threshold: float = 0.3):
+                 metric: Optional[HGR],
+                 alpha: Optional[float],
+                 threshold: float):
         """
         :param units:
             The neural network hidden units.

@@ -49,8 +49,14 @@ class Dataset(Cacheable):
 
     @property
     @abstractmethod
+    def batch(self) -> int:
+        """The batch size in the neural model trained on the dataset."""
+        pass
+
+    @property
+    @abstractmethod
     def threshold(self) -> float:
-        """The penalty threshold when learning a constrained model."""
+        """The penalty threshold used when learning a constrained model."""
         pass
 
     @property

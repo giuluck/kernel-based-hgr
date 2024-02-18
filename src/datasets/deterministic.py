@@ -40,6 +40,10 @@ class Deterministic(Dataset, ABC):
         return []
 
     @property
+    def batch(self) -> int:
+        return -1
+
+    @property
     def threshold(self) -> float:
         return 0.0
 
