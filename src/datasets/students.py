@@ -8,11 +8,32 @@ from sklearn.model_selection import KFold
 
 from src.datasets.dataset import SurrogateDataset
 
+COLUMNS: Dict[str, str] = dict(
+    year='year',
+    ESCS='ESCS',
+    books='books',
+    mother_occupation='mother_occupation',
+    father_occupation='father_occupation',
+    mother_education='mother_education',
+    father_education='father_education',
+    a160k='english_perceived_good',
+    a162k='english_difficult_students',
+    a163k='english_difficult_subjects',
+    score_ING='english_score'
+)
+"""Data columns used during the preprocessing step."""
+
 
 @dataclass(frozen=True, init=True, repr=True, eq=False, unsafe_hash=None, kw_only=True)
 class Students(SurrogateDataset):
     def _load(self) -> pd.DataFrame:
-        surrogates = ['mother_occupation', 'father_occupation', 'mother_education', 'father_education', 'books']
+        surrogates = dict(
+            books='N. Books',
+            mother_education='Mother Ed.',
+            father_education='Father Ed.',
+            mother_occupation='Mother Occ.',
+            father_occupation='Father Occ.'
+        )
         with importlib.resources.path('data', 'students.csv') as filepath:
             if filepath.exists():
                 data = pd.read_csv(filepath)
@@ -20,15 +41,16 @@ class Students(SurrogateDataset):
                 raise ImportError("The students dataset is private. If you have access to it, "
                                   "please import it in the 'experiments.results' package in order to load it.")
         # cache surrogate attributes for evaluation
-        self._cache['surrogates'] = data[surrogates]
+        # self._cache['surrogates'] = data[list(surrogates)].rename(columns=surrogates)
+        self._cache['surrogates'] = data[list(surrogates)].rename(columns=surrogates)
         # split train (year == 2018) and test (year != 2018)
         self._cache['train_mask'] = np.array(data['year'] == 2018)
         # standardize ESCS (continuous), normalize scoreING (output), and convert multi-class features
-        data = data.drop(columns=surrogates + ['year'])
+        data = data.drop(columns='year')
         for column, values in data.items():
             if column == 'ESCS':
                 data[column] = (values - values.mean()) / values.std(ddof=0)
-            elif column == 'scoreING':
+            elif column == 'english_score':
                 data[column] = (values - values.min()) / (values.max() - values.min())
             else:
                 data[column] = values.astype('category')
@@ -76,11 +98,15 @@ class Students(SurrogateDataset):
 
     @property
     def surrogate_name(self) -> str:
-        return 'f11_5.0'
+        return 'books_4.0'
 
     @property
     def target_name(self) -> str:
-        return 'scoreING'
+        return 'english_score'
+
+    @property
+    def surrogates(self) -> pd.DataFrame:
+        return self._cache['surrogates'].copy()
 
     @property
     def configuration(self) -> Dict[str, Any]:

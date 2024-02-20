@@ -132,10 +132,12 @@ class DIDI(Metric):
     def __call__(self, x: np.ndarray, y: np.ndarray, p: np.ndarray) -> np.ndarray:
         # binarize predictions in case of classification task
         p = p.round().astype(int) if self._classification else p
-        # retrive the (binary) input and compute the partial DIDI for both groups
+        # retrive the input and compute the average
         x = x[:, self._excluded]
-        avg = np.mean(p)
-        avg0 = np.mean(p[x == 0.0])
-        avg1 = np.mean(p[x == 1.0])
-        # return the relative DIDI as the sum of absolute differences
-        return abs(avg - avg0) + abs(avg - avg1)
+        avg = p.mean()
+        didi = 0.0
+        # compute the partial DIDI for all the groups and sum it
+        for group in np.unique(x):
+            didi += abs(avg - p[x == group].mean())
+        # return the DIDI
+        return didi

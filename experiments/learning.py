@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from experiments.experiment import Experiment
-from src.datasets import SurrogateDataset
-from src.hgr import HGR
+from src.datasets import SurrogateDataset, Students
+from src.hgr import HGR, SingleKernelHGR
 from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History, \
     Correlation
 from src.learning.metrics import DIDI
@@ -254,7 +254,7 @@ class LearningExperiment(Experiment):
                         ax=axes[i, j]
                     )
                     axes[i, j].set_ylabel(kpi)
-                    axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'ACC'] else data[data['step'] > 20]['value'].max()))
+                    axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'AUC'] else data[data['step'] > 20]['value'].max()))
                     axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {unit}")
             # store, print, and plot if necessary
             for extension in formats:
@@ -271,23 +271,25 @@ class LearningExperiment(Experiment):
                 metrics: Dict[str, HGR],
                 steps: int = 500,
                 folds: int = 5,
+                units: Optional[Iterable[int]] = None,
+                batch: Optional[int] = None,
+                alpha: Optional[float] = None,
+                threshold: Optional[float] = None,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('png',),
                 plot: bool = False):
-        metrics = {'UNC': None, **metrics}
+        metrics = {'//': None, **metrics}
 
         def configuration(ds, mt, fl):
             d = datasets[ds]
             # return a list of metrics for loss, accuracy, correlation, and optionally surrogate fairness
-            return dict(dataset=ds, metric=mt, fold=fl), [
-                Loss(classification=d.classification),
+            return dict(Dataset=ds, Penalizer=mt, fold=fl), [
                 Accuracy(classification=d.classification),
                 Correlation(excluded=d.excluded_index, algorithm='sk', name=f'Protected HGR'),
                 DIDI(excluded=d.surrogate_index, classification=d.classification, name=f'Surrogate DIDI')
             ]
 
-        sns.set_context('notebook')
-        sns.set_style('whitegrid')
+        sns.set(context='poster', style='whitegrid')
         # iterate over dataset and batches
         for name, dataset in datasets.items():
             # use dictionaries for dataset to retrieve correct configuration
@@ -299,10 +301,10 @@ class LearningExperiment(Experiment):
                 metric=metrics,
                 fold=list(range(folds)),
                 folds=folds,
-                _units=None,
-                _batch=None,
-                _alpha=None,
-                _threshold=None,
+                _units=units,
+                _batch=batch,
+                _alpha=alpha,
+                _threshold=threshold,
                 steps=steps,
                 wandb_project=wandb_project
             )
@@ -313,6 +315,7 @@ class LearningExperiment(Experiment):
             fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey=None, tight_layout=True)
             for i, sp in enumerate(['Train', 'Val']):
                 for j, kpi in enumerate(kpis):
+                    j += 1
                     sns.lineplot(
                         data=group[np.logical_and(group['split'] == sp, group['kpi'] == kpi)],
                         x='step',
@@ -320,58 +323,53 @@ class LearningExperiment(Experiment):
                         estimator='mean',
                         errorbar='sd',
                         linewidth=2,
-                        hue='metric',
-                        style='metric',
+                        hue='Penalizer',
+                        style='Penalizer',
                         palette=PALETTE[:len(metrics)],
                         ax=axes[i, j]
                     )
                     axes[i, j].set_title(f"{kpi} ({sp.lower()})")
+                    axes[i, j].get_legend().remove()
+                    axes[i, j].set_ylabel(None)
                     if i == 1:
                         ub = axes[1, j].get_ylim()[1] if kpi == 'MSE' or kpi == 'BCE' or 'DIDI' in kpi else 1
                         axes[0, j].set_ylim((0, ub))
                         axes[1, j].set_ylim((0, ub))
-            # get and plot history results (alpha and time)
-            history = []
-            to_remove = []
+            # get and plot lambda history
+            lambdas = []
             for (_, mtr, fld), experiment in experiments.items():
                 result = experiment.result
-                times = result['time']
-                if experiment.metric is None:
-                    alphas = [np.nan] * len(result['alpha'])
-                    to_remove.append(mtr)
-                else:
-                    alphas = result['alpha']
-                history.extend([{
-                    'metric': mtr,
+                alphas = ([np.nan] * len(result['alpha'])) if experiment.metric is None else result['alpha']
+                lambdas.extend([{
+                    'Penalizer': mtr,
                     'fold': fld,
                     'step': step,
-                    'Training Time (s)': times[step],
-                    'Lambda Weight': alphas[step]
+                    'lambda': alphas[step]
                 } for step in range(experiment.steps)])
-            history = pd.DataFrame(history)
-            for i, col in enumerate(['Training Time (s)', 'Lambda Weight']):
-                sns.lineplot(
-                    data=history,
-                    x='step',
-                    y=col,
-                    estimator='mean',
-                    errorbar='sd',
-                    linewidth=2,
-                    hue='metric',
-                    style='metric',
-                    palette=PALETTE[:len(metrics)],
-                    ax=axes[i, -1]
-                )
-                axes[i, -1].set_title(col)
-                axes[i, -1].set_ylabel(None)
-            # QUICK PATCH TO REMOVE UNCONSTRAINED EXPERIMENTS FROM ALPHA LEGEND
-            leg = axes[1, -1].legend()
-            for handle, text in zip(leg.legendHandles, leg.texts):
-                # noinspection PyProtectedMember
-                if handle._label in to_remove and text._text in to_remove:
-                    handle.set_visible(False)
-                    text.set_visible(False)
-            leg.set_title('metric')
+            sns.lineplot(
+                data=pd.DataFrame(lambdas),
+                x='step',
+                y='lambda',
+                estimator='mean',
+                errorbar='sd',
+                linewidth=2,
+                hue='Penalizer',
+                style='Penalizer',
+                palette=PALETTE[:len(metrics)],
+                ax=axes[1, 0]
+            )
+            axes[1, 0].get_legend().remove()
+            axes[1, 0].set_title('$\lambda$')
+            axes[1, 0].set_ylabel(None)
+            # plot legend
+            handles, labels = axes[1, 0].get_legend_handles_labels()
+            axes[0, 0].legend(handles, labels, title='PENALIZER', loc='center left', labelspacing=1.2, frameon=False)
+            axes[0, 0].spines['top'].set_visible(False)
+            axes[0, 0].spines['right'].set_visible(False)
+            axes[0, 0].spines['bottom'].set_visible(False)
+            axes[0, 0].spines['left'].set_visible(False)
+            axes[0, 0].set_xticks([])
+            axes[0, 0].set_yticks([])
             # store, print, and plot if necessary
             for extension in formats:
                 filename = f'history_{name}.{extension}'
@@ -384,13 +382,17 @@ class LearningExperiment(Experiment):
 
     @staticmethod
     def results(datasets: Dict[str, SurrogateDataset],
-                metrics: Dict[str, Optional[HGR]],
+                metrics: Dict[str, HGR],
                 steps: int = 500,
                 folds: int = 5,
+                units: Optional[Iterable[int]] = None,
+                batch: Optional[int] = None,
+                alpha: Optional[float] = None,
+                threshold: Optional[float] = None,
                 wandb_project: Optional[str] = None,
                 formats: Iterable[str] = ('csv',)):
         # run experiments
-        metrics = {'UNC': None, **metrics}
+        metrics = {'//': None, **metrics}
         experiments = LearningExperiment.doe(
             file_name='learning',
             save_time=0,
@@ -399,10 +401,10 @@ class LearningExperiment(Experiment):
             metric=metrics,
             fold=list(range(folds)),
             folds=folds,
-            _units=None,
-            _batch=None,
-            _alpha=None,
-            _threshold=None,
+            _units=units,
+            _batch=batch,
+            _alpha=alpha,
+            _threshold=threshold,
             steps=steps,
             wandb_project=wandb_project
         )
@@ -415,7 +417,7 @@ class LearningExperiment(Experiment):
                 Correlation(excluded=dataset.excluded_index, algorithm='kb', name=f'HGR'),
                 DIDI(excluded=dataset.surrogate_index, classification=dataset.classification, name=f'DIDI')
             ]
-            configuration = dict(dataset=ds, metric=mt)
+            configuration = dict(Dataset=ds, Penalizer=mt)
             results = experiment.result(external=True)
             history = results['history'][experiment.steps - 1]
             group.append({**configuration, 'split': 'train', 'kpi': 'Time', 'value': results['execution']})
@@ -426,18 +428,16 @@ class LearningExperiment(Experiment):
                 for kpi in kpis:
                     group.append({**configuration, 'split': split, 'kpi': kpi.name, 'value': kpi(x=x, y=y, p=p)})
         group = pd.DataFrame(group)
-        group = group.groupby(['dataset', 'metric', 'split', 'kpi'], as_index=False).agg(['mean', 'std'])
-        group.columns = ['dataset', 'metric', 'split', 'kpi', 'mean', 'std']
-        group['text'] = [f"{row['mean']:.2f} ± {row['std']:.2f}" for _, row in group.iterrows()]
-        group = group.pivot(index=['dataset', 'metric'], columns=['kpi', 'split']).reorder_levels([1, 2, 0], axis=1)
+        group = group.groupby(['Dataset', 'Penalizer', 'split', 'kpi'], as_index=False).agg(['mean', 'std'])
+        group.columns = ['Dataset', 'Penalizer', 'split', 'kpi', 'mean', 'std']
+        group['text'] = [f"{row['mean']:.3f} ± {row['std']:.2f}" for _, row in group.iterrows()]
+        group = group.pivot(index=['Dataset', 'Penalizer'], columns=['kpi', 'split']).reorder_levels([1, 2, 0], axis=1)
         group = group.reindex(index=[(d, m) for d in datasets.keys() for m in metrics.keys()])
         columns = [(kpi, split, agg)
                    for kpi in ['SCORE', 'HGR', 'DIDI']
                    for split in ['train', 'val']
                    for agg in ['mean', 'std', 'text']]
         group = group.reindex(columns=columns + [('Time', 'train', agg) for agg in ['mean', 'std', 'text']])
-        if len(metrics) == 1:
-            group = group.droplevel(1)
         if len(datasets) == 1:
             group = group.droplevel(0)
         if 'csv' in formats:
@@ -447,7 +447,86 @@ class LearningExperiment(Experiment):
         if 'tex' in formats:
             df = group[(c for c in group.columns if c[2] == 'text')].droplevel(2, axis=1)
             with importlib.resources.path('experiments.exports', f'results.tex') as filepath:
-                df.to_latex(filepath, multicolumn=True, multirow=True, multicolumn_format='c')
+                df.to_latex(filepath, multicolumn=True, multirow=False, multicolumn_format='c')
+
+    @staticmethod
+    def usecase(steps: int = 500,
+                units: Optional[Iterable[int]] = None,
+                batch: Optional[int] = None,
+                alpha: Optional[float] = None,
+                threshold: Optional[float] = None,
+                wandb_project: Optional[str] = None,
+                formats: Iterable[str] = ('png',),
+                plot: bool = False):
+        # run experiments
+        dataset = Students()
+        metrics = {'Unconstrained': None, 'Constrained': SingleKernelHGR()}
+        experiments = LearningExperiment.doe(
+            file_name='learning',
+            save_time=0,
+            verbose=True,
+            dataset=dataset,
+            metric=metrics,
+            fold=0,
+            folds=1,
+            _units=units,
+            _batch=batch,
+            _alpha=alpha,
+            _threshold=threshold,
+            steps=steps,
+            wandb_project=wandb_project
+        )
+        # retrieve results
+        r2 = Accuracy(classification=False)
+        hgr = Correlation(excluded=dataset.excluded_index, algorithm='kb')
+        (xtr, ytr), (xts, yts) = [
+            (data.drop(columns=dataset.target_name), data[dataset.target_name])
+            for data in dataset.data(folds=1, seed=SEED)[0]
+        ]
+        surrogates = {name: (val.loc[xtr.index], val.loc[xts.index]) for name, val in dataset.surrogates.items()}
+        outputs = []
+        for metric, experiment in experiments.items():
+            history = experiment.result['history'][experiment.steps - 1]
+            for i, (x, y), split in zip([0, 1], [(xtr.values, ytr.values), (xts.values, yts.values)], ['train', 'val']):
+                p = history[f'{split}_predictions'].numpy(force=True).flatten()
+                outputs.append({'penalizer': metric, 'split': split, 'kpi': 'R2', 'value': r2(x=x, y=y, p=p)})
+                outputs.append({'penalizer': metric, 'split': split, 'kpi': 'HGR', 'value': hgr(x=x, y=y, p=p)})
+                for name, values in surrogates.items():
+                    x = values[i].values.reshape((-1, 1))
+                    # noinspection PyUnresolvedReferences
+                    kpi = f"DIDI\n{name}"
+                    mtr = DIDI(excluded=0, classification=False)
+                    outputs.append({'penalizer': metric, 'split': split, 'kpi': kpi, 'value': mtr(x=x, y=y, p=p)})
+        outputs = pd.DataFrame(outputs)
+        # build plots
+        sns.set(context='poster', style='whitegrid', font_scale=2)
+        figures = {split: plt.figure(figsize=(26, 10), tight_layout=True) for split in ['train', 'val']}
+        for split, fig in figures.items():
+            ax = fig.gca()
+            sns.barplot(
+                data=outputs[outputs['split'] == split],
+                x='kpi',
+                y='value',
+                hue='penalizer',
+                linewidth=3,
+                palette=PALETTE[:len(metrics)],
+                ax=ax
+            )
+            ax.legend(*ax.get_legend_handles_labels(), title=None)
+            ax.set_xlabel(None)
+            ax.set_ylabel(None)
+        # store, print, and plot if necessary
+        for extension in formats:
+            for split, fig in figures.items():
+                filename = f'usecase_{split}.{extension}'
+                with importlib.resources.path('experiments.exports', filename) as file:
+                    fig.savefig(file, bbox_inches='tight')
+        if plot:
+            for split, fig in figures.items():
+                fig.suptitle(f"Use Case Results ({split.title()})")
+                fig.show()
+        for fig in figures.values():
+            plt.close(fig)
 
     @staticmethod
     def _metrics(experiments: Dict[Any, 'LearningExperiment'],

@@ -158,7 +158,6 @@ class KernelBasedHGR(KernelsHGR):
             constraints=[constraint],
             method='trust-constr',
             tol=TOL,
-            # options=dict(verbose=3)
         )
         # reconstruct alpha and beta by adding zeros wherever the indices were not considered
         alpha = np.zeros(degree_x)

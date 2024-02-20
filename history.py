@@ -68,6 +68,34 @@ parser.add_argument(
     help='the number of folds to be used for cross-validation'
 )
 parser.add_argument(
+    '-u',
+    '--units',
+    type=int,
+    nargs='*',
+    help='the hidden units of the neural networks (if not passed, uses the dataset default choice)'
+)
+parser.add_argument(
+    '-b',
+    '--batch',
+    type=int,
+    nargs='?',
+    help='the batch size used during training (if not passed, uses the dataset default choice)'
+)
+parser.add_argument(
+    '-t',
+    '--threshold',
+    type=float,
+    nargs='?',
+    help='the penalty threshold used during training (if not passed, uses the dataset default choice)'
+)
+parser.add_argument(
+    '-a',
+    '--alpha',
+    type=float,
+    nargs='?',
+    help='the alpha value used for the penalty constraint (if not passed, uses automatic tuning)'
+)
+parser.add_argument(
     '-p',
     '--wandb-project',
     type=str,

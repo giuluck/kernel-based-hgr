@@ -68,8 +68,7 @@ class AnalysisExperiment(Experiment):
             targets.append(True)
         if on in ['protected', 'both']:
             targets.append(False)
-        sns.set_context('notebook')
-        sns.set_style('whitegrid')
+        sns.set(context='poster', style='whitegrid', font_scale=2.5)
         # iterate over dataset and protected
         for ds, dataset in datasets.items():
             for target in targets:
@@ -88,11 +87,14 @@ class AnalysisExperiment(Experiment):
                 # plot results
                 correlations = {ft: exp.result['hgr'] for ft, exp in experiments.items()}
                 correlations = pd.Series(correlations).sort_values(ascending=False).iloc[:top]
-                fig = plt.figure(figsize=(16, 9), tight_layout=True)
+                fig = plt.figure(figsize=(13, 12))
                 ax = fig.gca()
-                sns.barplot(data=correlations, color='black', ax=ax)
-                ax.set_xticklabels(correlations.index, rotation=45)
-                ax.set_ylim((0, 1))
+                sns.barplot(data=correlations, color='black', orient='h', ax=ax)
+                ax.set_xlim((0, 1))
+                ax.xaxis.tick_top()
+                ax.xaxis.set_label_position('top')
+                ax.tick_params(axis='x', which='major', length=0)
+                ax.tick_params(axis='y', which='major', pad=10)
                 # store and plot if necessary
                 for extension in formats:
                     name = f'importance_{ds}_{var}.{extension}'
@@ -113,8 +115,7 @@ class AnalysisExperiment(Experiment):
             targets.append(True)
         if on in ['surrogate', 'both']:
             targets.append(False)
-        sns.set_context('notebook')
-        sns.set_style('whitegrid')
+        sns.set(context='poster', style='whitegrid', font_scale=1.5)
         # iterate over dataset and protected
         for ds, dataset in datasets.items():
             for target in targets:
@@ -141,7 +142,7 @@ class AnalysisExperiment(Experiment):
                 )
                 fig, axes = plt.subplot_mosaic(
                     mosaic=[[True, True, 'data', False, False], [True, True, 'hgr', False, False]],
-                    figsize=(15, 6),
+                    figsize=(30, 12),
                     tight_layout=True
                 )
                 # plot kernels
@@ -208,8 +209,8 @@ class AnalysisExperiment(Experiment):
         # build axes
         axes = {
             'data': ('center left', 'a', 'b', 14, f'Correlation: {abs(pearsonr(a, b)[0]):.3f}'),
-            'fa': ('upper center', 'a', 'f(a)', 30, f"α = {kernels['alpha'].round(2)}"),
-            'gb': ('lower center', 'b', 'g(b)', 34, f"β = {kernels['beta'].round(2)}"),
+            'fa': ('upper center', 'a', 'f(a)', 30, f"$\\alpha$ = {kernels['alpha'].round(2)}"),
+            'gb': ('lower center', 'b', 'g(b)', 34, f"$\\beta$ = {kernels['beta'].round(2)}"),
             'proj': ('center right', 'f(a)', 'g(b)', 34, f'Correlation: {hgr:.3f}')
         }
         for key, (loc, xl, yl, lp, tl) in axes.items():

@@ -54,7 +54,7 @@ parser.add_argument(
     type=str,
     nargs='*',
     choices=list(metrics),
-    default=['kb', 'nn', 'kde', 'rdc'],
+    default=['kb', 'sk', 'nn', 'kde', 'rdc'],
     help='the metric used to compute the correlations'
 )
 parser.add_argument(

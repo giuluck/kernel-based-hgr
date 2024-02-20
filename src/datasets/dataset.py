@@ -61,7 +61,7 @@ class Dataset(Cacheable):
 
     @property
     def input_names(self) -> List[str]:
-        return [column for column in self._data.columns if column != self.target_name]
+        return self._data.drop(columns=self.target_name).columns.tolist()
 
     @property
     @abstractmethod

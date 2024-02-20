@@ -45,7 +45,7 @@ class Adult(SurrogateDataset):
 
     @property
     def surrogate_name(self) -> str:
-        return 'marital-status_Never-married'
+        return 'Never-married'
 
     @property
     def target_name(self) -> str:
