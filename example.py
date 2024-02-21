@@ -48,6 +48,13 @@ def dataset(key):
 # build argument parser
 parser = argparse.ArgumentParser(description='Plot the example figure')
 parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
     '-d',
     '--dataset',
     type=str,
@@ -69,8 +76,8 @@ parser.add_argument(
     help='the degree for the b variable'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],

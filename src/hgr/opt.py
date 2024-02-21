@@ -39,7 +39,7 @@ class KernelBasedHGR(KernelsHGR):
         """The kernel degree for the first variable."""
         pass
 
-    def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
+    def _kernels(self, a: np.ndarray, b: np.ndarray, folder: str, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
         # center the kernels with respect to the training data
         a_ref = experiment.dataset.excluded(backend='numpy')
         b_ref = experiment.dataset.target(backend='numpy')

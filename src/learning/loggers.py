@@ -1,4 +1,3 @@
-import importlib.resources
 import os.path
 import pickle
 from argparse import Namespace
@@ -37,17 +36,21 @@ class InternalLogger(Logger):
 
 
 class History(pl.Callback):
-    def __init__(self, key: str):
+    def __init__(self, key: str, folder: str):
         """
         :param key:
             The key of the experiment.
+
+        :param folder:
+            The folder where to store the results.
         """
         self._key: str = key
+        self._folder: str = folder
         self._external: Set[str] = set()
 
     @property
-    def folder(self) -> str:
-        return os.path.join('learning', self._key)
+    def subfolder(self) -> str:
+        return os.path.join('results', 'learning', self._key)
 
     def on_train_batch_end(self,
                            trainer: pl.Trainer,
@@ -60,20 +63,18 @@ class History(pl.Callback):
             val_predictions=pl_module(trainer.val_dataloaders.dataset.x),
             model_state=pl_module.state_dict()
         )
-        with importlib.resources.files('experiments.results') as folder:
-            name = f'{self._key}_step-{trainer.global_step - 1}.pkl'
-            filepath = os.path.join(folder, self.folder, name)
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            with open(filepath, 'wb') as file:
-                pickle.dump(results, file=file)
+        name = f'{self._key}_step-{trainer.global_step - 1}.pkl'
+        filepath = os.path.join(self._folder, self.subfolder, name)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'wb') as file:
+            pickle.dump(results, file=file)
         self._external.add(name)
 
-    def __getitem__(self, item: int) -> Dict[str, Any]:
+    def get(self, item: int, folder: str) -> Dict[str, Any]:
         name = f'{self._key}_step-{item}.pkl'
         assert name in self._external, f"External results for experiment {self._key} are not available at step {item}"
-        with importlib.resources.files('experiments.results') as folder:
-            with open(os.path.join(folder, self.folder, name), 'rb') as file:
-                return pickle.load(file=file)
+        with open(os.path.join(folder, self.subfolder, name), 'rb') as file:
+            return pickle.load(file=file)
 
 
 class Progress(pl.Callback):

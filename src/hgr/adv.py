@@ -48,10 +48,10 @@ class AdversarialHGR(KernelsHGR):
         correlation = model(yhat=b, s_var=a, nb=epochs)
         return correlation, net_1, net_2
 
-    def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
+    def _kernels(self, a: np.ndarray, b: np.ndarray, folder: str, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
         a = torch.tensor(a, dtype=torch.float32).reshape((-1, 1))
         b = torch.tensor(b, dtype=torch.float32).reshape((-1, 1))
-        result = experiment.result(external=True)
+        result = experiment.result(external=folder)
         fa = result['f'](a).numpy(force=True).flatten()
         gb = result['g'](b).numpy(force=True).flatten()
         return fa, gb

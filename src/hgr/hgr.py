@@ -35,15 +35,15 @@ class KernelsHGR(HGR):
     """Interface for an HGR object that also allows to inspect kernels."""
 
     @abstractmethod
-    def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
+    def _kernels(self, a: np.ndarray, b: np.ndarray, folder: str, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
         """Returns the f(a) and g(b) kernels given the two input vectors and the result of the experiments."""
         pass
 
-    def kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[float, np.ndarray, np.ndarray]:
+    def kernels(self, a: np.ndarray, b: np.ndarray, folder: str, experiment: Any) -> Tuple[float, np.ndarray, np.ndarray]:
         """Returns the f(a) and g(b) kernels, along with the computed correlation, given the two input vectors and the
         result of the experiments."""
         assert self == experiment.metric, f'Unexpected metric {experiment.metric} when computing kernels'
-        fa, gb = self._kernels(a=a, b=b, experiment=experiment)
+        fa, gb = self._kernels(a=a, b=b, folder=folder, experiment=experiment)
         fa = (fa - fa.mean()) / fa.std(ddof=0)
         gb = (gb - gb.mean()) / gb.std(ddof=0)
         return abs(np.mean(fa * gb)), fa, gb

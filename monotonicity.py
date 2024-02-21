@@ -29,6 +29,13 @@ datasets = dict(
 # build argument parser
 parser = argparse.ArgumentParser(description='Test the Kernel-based HGR on a given dataset')
 parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
     '-d',
     '--datasets',
     type=str,
@@ -68,8 +75,8 @@ parser.add_argument(
     help='the max value used in the color bar (or None if empty)'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],

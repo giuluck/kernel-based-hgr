@@ -31,7 +31,7 @@ class Oracle(KernelsHGR):
         def key(self) -> str:
             return f'{self.name}-{self.dataset.key}'
 
-        def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
+        def _kernels(self, a: np.ndarray, b: np.ndarray, folder: str, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
             assert self.dataset == experiment.dataset, f'Unexpected dataset {experiment.dataset} when computing kernels'
             return self.dataset.f(a), self.dataset.g(b)
 
@@ -47,7 +47,7 @@ class Oracle(KernelsHGR):
     def instance(self, dataset: Deterministic) -> _Instance:
         return Oracle._Instance(dataset=dataset)
 
-    def _kernels(self, a: np.ndarray, b: np.ndarray, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
+    def _kernels(self, a: np.ndarray, b: np.ndarray, folder: str, experiment: Any) -> Tuple[np.ndarray, np.ndarray]:
         return experiment.dataset.f(a), experiment.dataset.g(b)
 
     def __eq__(self, other: Serializable) -> bool:

@@ -1,4 +1,3 @@
-import importlib.resources
 import os.path
 import pickle
 import time
@@ -45,7 +44,7 @@ class CorrelationExperiment(Experiment):
     seed: int = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The random seed used in the experiment."""
 
-    def _compute(self) -> Experiment.Result:
+    def _compute(self, folder: str) -> Experiment.Result:
         pl.seed_everything(self.seed, workers=True)
         start = time.time()
         a = self.dataset.excluded(backend='numpy')
@@ -55,14 +54,13 @@ class CorrelationExperiment(Experiment):
         # store external files only for NN kernels, in the other cases include the additional results in the object
         if isinstance(self.metric, AdversarialHGR):
             external = os.path.join('correlation', f'{self.key}.pkl')
-            with importlib.resources.files('experiments.results') as folder:
-                filepath = os.path.join(folder, external)
-                # overwrite files rather than asserting that they are not present since an abrupt interruption of the
-                # DoE might cause leaking external files to be stored while the original results are not
-                if os.path.exists(filepath):
-                    print(f"WARNING: overwriting file '{self.key}' since it is already in 'experiments.results'")
-                else:
-                    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            filepath = os.path.join(folder, external)
+            # overwrite files rather than asserting that they are not present since an abrupt interruption of the
+            # DoE might cause leaking external files to be stored while the original results are not
+            if os.path.exists(filepath):
+                print(f"WARNING: overwriting file '{self.key}' since it is already in the expected folder")
+            else:
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
             with open(filepath, 'wb') as file:
                 pickle.dump(additional, file=file)
             return Experiment.Result(timestamp=start, execution=gap, external=external, correlation=hgr)
@@ -87,16 +85,18 @@ class CorrelationExperiment(Experiment):
         return f'{self.name}_{self.dataset.key}_{self.metric.key}_{self.seed}'
 
     @staticmethod
-    def monotonicity(datasets: Iterable[Dataset],
+    def monotonicity(folder: str,
+                     datasets: Iterable[Dataset],
                      degrees_a: Iterable[int] = (1, 2, 3, 4, 5, 6, 7),
                      degrees_b: Iterable[int] = (1, 2, 3, 4, 5, 6, 7),
                      vmin: Optional[float] = None,
                      vmax: Optional[float] = None,
-                     formats: Iterable[str] = ('png',),
+                     extensions: Iterable[str] = ('png',),
                      plot: bool = False,
                      save_time: int = 60):
         # run experiments
         experiments = CorrelationExperiment.doe(
+            folder=folder,
             file_name='correlation',
             save_time=save_time,
             verbose=False,
@@ -128,10 +128,10 @@ class CorrelationExperiment(Experiment):
             ax.set_yticklabels(degrees_b[::-1], minor=True)
             ax.grid(True, which='major')
             # store, print, and plot if necessary
-            for extension in formats:
+            for extension in extensions:
                 name = f'monotonicity_{dataset.key}.{extension}'
-                with importlib.resources.path('experiments.exports', name) as file:
-                    fig.savefig(file, bbox_inches='tight')
+                file = os.path.join(folder, 'exports', name)
+                fig.savefig(file, bbox_inches='tight')
             if plot:
                 config = dataset.configuration
                 name = config.pop('name').title()
@@ -141,24 +141,26 @@ class CorrelationExperiment(Experiment):
             plt.close(fig)
 
     @staticmethod
-    def correlations(datasets: Dict[str, Callable[[float, int], Deterministic]],
+    def correlations(folder: str,
+                     datasets: Dict[str, Callable[[float, int], Deterministic]],
                      metrics: Dict[str, HGR],
                      noises: Iterable[float] = np.linspace(0.0, 3.0, num=16, endpoint=True).round(2),
-                     data_seeds: Iterable[int] = range(10),
+                     noise_seeds: Iterable[int] = range(10),
                      algorithm_seeds: Iterable[int] = range(10),
                      test: bool = False,
                      columns: int = 2,
-                     formats: Iterable[str] = ('png',),
+                     extensions: Iterable[str] = ('png',),
                      plot: bool = False,
                      save_time: int = 60):
-        assert len(data_seeds) > 1 or not test, "Tests cannot be performed only if more than one data seed is passed"
+        assert len(noise_seeds) > 1 or not test, "Tests cannot be performed only if more than one data seed is passed"
         # run experiments
         metrics = {'ORACLE': Oracle(), **metrics}
         experiments = CorrelationExperiment.doe(
+            folder=folder,
             file_name='correlation',
             save_time=save_time,
             verbose=False,
-            dataset={(k, n, s): fn(n, s) for k, fn in datasets.items() for n in noises for s in data_seeds},
+            dataset={(k, n, s): fn(n, s) for k, fn in datasets.items() for n in noises for s in noise_seeds},
             metric=metrics,
             seed=list(algorithm_seeds)
         )
@@ -175,14 +177,14 @@ class CorrelationExperiment(Experiment):
                 })
             # build results for test data (use all the data seeds but the training one)
             elif isinstance(experiment.metric, KernelsHGR):
-                for s in data_seeds:
+                for s in noise_seeds:
                     if s == seed:
                         continue
                     dataset_seed = datasets[dataset](noise, s)
                     x = dataset_seed.excluded(backend='numpy')
                     y = dataset_seed.target(backend='numpy')
                     results.append({
-                        'correlation': experiment.metric.kernels(a=x, b=y, experiment=experiment)[0],
+                        'correlation': experiment.metric.kernels(a=x, b=y, folder=folder, experiment=experiment)[0],
                         'test_seed': s,
                         **config
                     })
@@ -248,25 +250,27 @@ class CorrelationExperiment(Experiment):
             ax.set_yscale('log')
         # store, print, and plot if necessary
         key = 'test' if test else 'train'
-        for extension in formats:
-            with importlib.resources.path('experiments.exports', f'correlations_{key}.{extension}') as file:
-                fig.savefig(file, bbox_inches='tight')
+        for extension in extensions:
+            file = os.path.join(folder, 'exports', f'correlations_{key}.{extension}')
+            fig.savefig(file, bbox_inches='tight')
         if plot:
             fig.suptitle(f'Computed Correlations ({key.title()})')
             fig.show()
         plt.close(fig)
 
     @staticmethod
-    def kernels(datasets: Iterable[Callable[[float], Deterministic]],
+    def kernels(folder: str,
+                datasets: Iterable[Callable[[float], Deterministic]],
                 metrics: Dict[str, KernelsHGR],
                 tests: int = 30,
-                formats: Iterable[str] = ('png',),
+                extensions: Iterable[str] = ('png',),
                 plot: bool = False,
                 save_time: int = 60):
         # run experiments
         metrics = {'ORACLE': Oracle(), **metrics}
         datasets_0 = [dataset_fn(0) for dataset_fn in datasets]
         experiments = CorrelationExperiment.doe(
+            folder=folder,
             file_name='correlation',
             save_time=save_time,
             verbose=False,
@@ -287,7 +291,7 @@ class CorrelationExperiment(Experiment):
             fa, gb = {'index': a}, {'index': b}
             # retrieve metric kernels
             for name, metric in metrics.items():
-                _, fa_current, gb_current = metric.kernels(a=a, b=b, experiment=experiments[(dataset.key, name)])
+                _, fa_current, gb_current = metric.kernels(a=a, b=b, folder=folder, experiment=experiments[(dataset.key, name)])
                 # for all the non-oracle kernels, switch sign to match kernel if necessary
                 if name != 'ORACLE':
                     fa_signs = np.sign(fa_current * fa['ORACLE'])
@@ -337,7 +341,7 @@ class CorrelationExperiment(Experiment):
                 correlations += [{
                     'metric': name,
                     'split': 'test',
-                    'hgr': metric.kernels(a=x, b=y, experiment=experiments[(dataset.key, name)])[0]
+                    'hgr': metric.kernels(a=x, b=y, folder=folder, experiment=experiments[(dataset.key, name)])[0]
                 } for name, metric in metrics.items()]
             ax = axes['hgr']
             sns.barplot(
@@ -364,10 +368,10 @@ class CorrelationExperiment(Experiment):
             ax.set_xlabel(None)
             ax.set_ylabel(None)
             # store and plot if necessary
-            for extension in formats:
+            for extension in extensions:
                 name = f'kernels_{dataset.key}.{extension}'
-                with importlib.resources.path('experiments.exports', name) as file:
-                    fig.savefig(file, bbox_inches='tight')
+                file = os.path.join(folder, 'exports', name)
+                fig.savefig(file, bbox_inches='tight')
             if plot:
                 config = dataset.configuration
                 name = config.pop('name').title()

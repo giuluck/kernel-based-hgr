@@ -28,6 +28,13 @@ units = [[32], [256], [32, 32], [256, 256], [32, 32, 32], [256, 256, 256]]
 # build argument parser
 parser = argparse.ArgumentParser(description='Selects the best number of units for unconstrained neural networks')
 parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
     '-d',
     '--datasets',
     type=str,
@@ -74,8 +81,8 @@ parser.add_argument(
     help='the name of the Weights & Biases project for logging, or None for no logging'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],

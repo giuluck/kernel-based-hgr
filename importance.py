@@ -19,6 +19,13 @@ datasets = dict(
 # build argument parser
 parser = argparse.ArgumentParser(description='Leverages HGR to compute the importance of features')
 parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
     '-d',
     '--datasets',
     type=str,
@@ -43,8 +50,8 @@ parser.add_argument(
     help='the top features to show'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],

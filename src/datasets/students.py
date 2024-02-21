@@ -39,7 +39,7 @@ class Students(SurrogateDataset):
                 data = pd.read_csv(filepath)
             else:
                 raise ImportError("The students dataset is private. If you have access to it, "
-                                  "please import it in the 'experiments.results' package in order to load it.")
+                                  "please import it in the 'data' package in order to load it.")
         # cache surrogate attributes for evaluation
         # self._cache['surrogates'] = data[list(surrogates)].rename(columns=surrogates)
         self._cache['surrogates'] = data[list(surrogates)].rename(columns=surrogates)

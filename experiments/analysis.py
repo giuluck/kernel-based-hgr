@@ -1,4 +1,4 @@
-import importlib.resources
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Iterable, Literal, Tuple
@@ -31,7 +31,7 @@ class AnalysisExperiment(Experiment):
     features: Tuple[str, str] = field(init=True, repr=True, compare=False, hash=None, kw_only=True)
     """The features to analyze."""
 
-    def _compute(self) -> Experiment.Result:
+    def _compute(self, folder: str) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
         start = time.time()
         a, b = self.features
@@ -57,10 +57,11 @@ class AnalysisExperiment(Experiment):
         return f'{self.name}_{self.dataset.key}_{self.metric.key}_{self.features[0]}_{self.features[1]}'
 
     @staticmethod
-    def importance(datasets: Dict[str, Dataset],
+    def importance(folder: str,
+                   datasets: Dict[str, Dataset],
                    on: Literal['target', 'protected', 'both'] = 'both',
                    top: int = 10,
-                   formats: Iterable[str] = ('png',),
+                   extensions: Iterable[str] = ('png',),
                    plot: bool = False,
                    save_time: int = 60):
         targets = []
@@ -76,6 +77,7 @@ class AnalysisExperiment(Experiment):
                 # run experiments
                 print(f"Running Experiments for Dataset {ds.title()} on variable '{var}':")
                 experiments = AnalysisExperiment.doe(
+                    folder=folder,
                     file_name='analysis',
                     save_time=save_time,
                     verbose=False,
@@ -96,18 +98,19 @@ class AnalysisExperiment(Experiment):
                 ax.tick_params(axis='x', which='major', length=0)
                 ax.tick_params(axis='y', which='major', pad=10)
                 # store and plot if necessary
-                for extension in formats:
+                for extension in extensions:
                     name = f'importance_{ds}_{var}.{extension}'
-                    with importlib.resources.path('experiments.exports', name) as file:
-                        fig.savefig(file, bbox_inches='tight')
+                    file = os.path.join(folder, 'exports', name)
+                    fig.savefig(file, bbox_inches='tight')
                 if plot:
                     fig.suptitle(f"Importance Analysis for feature '{var}' of {ds.title()} dataset")
                     fig.show()
 
     @staticmethod
-    def causality(datasets: Dict[str, Dataset],
+    def causality(folder: str,
+                  datasets: Dict[str, Dataset],
                   on: Literal['target', 'surrogate', 'both'] = 'both',
-                  formats: Iterable[str] = ('png',),
+                  extensions: Iterable[str] = ('png',),
                   plot: bool = False,
                   save_time: int = 60):
         targets = []
@@ -133,6 +136,7 @@ class AnalysisExperiment(Experiment):
                     False: DoubleKernelHGR(degree_a=1)
                 }
                 experiments = AnalysisExperiment.doe(
+                    folder=folder,
                     file_name='analysis',
                     save_time=save_time,
                     verbose=True,
@@ -151,7 +155,7 @@ class AnalysisExperiment(Experiment):
                         t, xl, yl = (f'DIRECT: {f1} --> {f2}', f'K({f1})', f2)
                     else:
                         t, xl, yl = (f'INVERSE: {f2} --> {f1}', f1, f'K({f2})')
-                    _, fx, gy = metric.kernels(a=x, b=y, experiment=experiments[direct])
+                    _, fx, gy = metric.kernels(a=x, b=y, folder=folder, experiment=experiments[direct])
                     ax = axes[direct]
                     sns.scatterplot(
                         x=fx,
@@ -180,19 +184,20 @@ class AnalysisExperiment(Experiment):
                 sns.barplot(data=pd.Series(correlations), color='black', ax=ax)
                 ax.set_ylim((0, 1))
                 # store and plot if necessary
-                for extension in formats:
+                for extension in extensions:
                     name = f'causality_{ds}_{f1}_{f2}.{extension}'
-                    with importlib.resources.path('experiments.exports', name) as file:
-                        fig.savefig(file, bbox_inches='tight')
+                    file = os.path.join(folder, 'exports', name)
+                    fig.savefig(file, bbox_inches='tight')
                 if plot:
                     fig.suptitle(f"Causal Analysis for {ds.title()} dataset")
                     fig.show()
 
     @staticmethod
-    def example(dataset: Dataset,
+    def example(folder: str,
+                dataset: Dataset,
                 degree_a: int = 2,
                 degree_b: int = 2,
-                formats: Iterable[str] = ('png',),
+                extensions: Iterable[str] = ('png',),
                 plot: bool = False):
         # compute correlations and kernels
         a, b = dataset.excluded(backend='numpy'), dataset.target(backend='numpy')
@@ -232,9 +237,11 @@ class AnalysisExperiment(Experiment):
         sns.lineplot(x=b, y=gb, sort=True, linewidth=2, color='black', ax=axes['gb'])
         axes['proj'].scatter(fa, gb, color='black', edgecolor='black', alpha=0.6, s=10)
         # store and plot if necessary
-        for extension in formats:
+        for extension in extensions:
             name = f'example.{extension}'
-            with importlib.resources.path('experiments.exports', name) as file:
-                fig.savefig(file, bbox_inches='tight')
+            exports = os.path.join(folder, 'exports')
+            os.makedirs(exports, exist_ok=True)
+            file = os.path.join(exports, name)
+            fig.savefig(file, bbox_inches='tight')
         if plot:
             fig.show()

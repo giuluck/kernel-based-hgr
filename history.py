@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import re
 import warnings
 
 from experiments import LearningExperiment
@@ -16,6 +17,27 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
     log.propagate = False
     log.setLevel(logging.ERROR)
 
+
+# function to retrieve the valid metric
+def metrics(key):
+    if key == 'nn':
+        return 'HGR-NN', AdversarialHGR()
+    elif key == 'kde':
+        return 'HGR-KDE', DensityHGR()
+    elif key == 'kb':
+        return 'HGR-KB', DoubleKernelHGR()
+    elif key == 'sk':
+        return 'HGR-SK', SingleKernelHGR()
+    elif re.compile('kb-([0-9]+)').match(key):
+        degree = int(key[3:])
+        return f'HGR-KB ({degree})', DoubleKernelHGR(degree_a=degree, degree_b=degree)
+    elif re.compile('sk-([0-9]+)').match(key):
+        degree = int(key[3:])
+        return f'HGR-SK ({degree})', SingleKernelHGR(degree=degree)
+    else:
+        raise KeyError(f"Invalid key '{key}' for metric")
+
+
 # list all the valid datasets
 datasets = dict(
     communities=Communities(),
@@ -24,17 +46,15 @@ datasets = dict(
     students=Students()
 )
 
-# list all the valid metrics
-metrics = dict(
-    sk=('HGR-SK', SingleKernelHGR()),
-    kb=('HGR-KB', DoubleKernelHGR()),
-    nn=('HGR-NN', AdversarialHGR()),
-    kde=('HGR-KDE', DensityHGR())
-)
-
-
 # build argument parser
 parser = argparse.ArgumentParser(description='Train multiple neural networks using different HGR metrics as penalizers')
+parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
 parser.add_argument(
     '-d',
     '--datasets',
@@ -49,7 +69,6 @@ parser.add_argument(
     '--metrics',
     type=str,
     nargs='*',
-    choices=list(metrics),
     default=['sk', 'kb', 'nn'],
     help='the metrics used as penalties'
 )
@@ -103,8 +122,8 @@ parser.add_argument(
     help='the name of the Weights & Biases project for logging, or None for no logging'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],
@@ -123,5 +142,5 @@ for k, v in args.items():
     print('  >', k, '-->', v)
 print()
 args['datasets'] = {k: datasets[k] for k in args['datasets']}
-args['metrics'] = {k: v for k, v in [metrics[m] for m in args['metrics']]}
+args['metrics'] = {k: v for k, v in [metrics(m) for m in args['metrics']]}
 LearningExperiment.history(**args)

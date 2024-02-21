@@ -1,5 +1,6 @@
 import argparse
 import logging
+import re
 
 import numpy as np
 
@@ -11,6 +12,33 @@ from src.hgr import DoubleKernelHGR, DensityHGR, ChiSquare, RandomizedDependence
 log = logging.getLogger("lightning_fabric")
 log.propagate = False
 log.setLevel(logging.ERROR)
+
+
+# function to retrieve the valid metric
+def metrics(key):
+    if key == 'nn':
+        return 'HGR-NN', AdversarialHGR()
+    elif key == 'kde':
+        return 'HGR-KDE', DensityHGR()
+    elif key == 'chi':
+        return 'CHI^2', ChiSquare()
+    elif key == 'rdc':
+        return 'RDC', RandomizedDependenceCoefficient()
+    elif key == 'prs':
+        return 'PEARS', DoubleKernelHGR(degree_a=1, degree_b=1)
+    elif key == 'kb':
+        return 'HGR-KB', DoubleKernelHGR()
+    elif key == 'sk':
+        return 'HGR-SK', SingleKernelHGR()
+    elif re.compile('kb-([0-9]+)').match(key):
+        degree = int(key[3:])
+        return f'HGR-KB ({degree})', DoubleKernelHGR(degree_a=degree, degree_b=degree)
+    elif re.compile('sk-([0-9]+)').match(key):
+        degree = int(key[3:])
+        return f'HGR-SK ({degree})', SingleKernelHGR(degree=degree)
+    else:
+        raise KeyError(f"Invalid key '{key}' for metric")
+
 
 # list all the valid datasets
 datasets = dict(
@@ -26,19 +54,15 @@ datasets = dict(
     tanh=lambda n, s: NonLinear(fn='tanh', noise=n, seed=s)
 )
 
-# list all the valid metrics
-metrics = dict(
-    kb=('HGR-KB', DoubleKernelHGR()),
-    sk=('HGR-SK', SingleKernelHGR()),
-    nn=('HGR-NN', AdversarialHGR()),
-    kde=('HGR-KDE', DensityHGR()),
-    chi=('CHI^2', ChiSquare()),
-    rdc=('RDC', RandomizedDependenceCoefficient()),
-    prs=('PEARS', DoubleKernelHGR(degree_a=1, degree_b=1))
-)
-
 # build argument parser
 parser = argparse.ArgumentParser(description='Test multiple HGR metrics on multiple datasets')
+parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
 parser.add_argument(
     '-d',
     '--datasets',
@@ -66,8 +90,8 @@ parser.add_argument(
     help='the noise values used in the experiments'
 )
 parser.add_argument(
-    '-ds',
-    '--data-seeds',
+    '-ns',
+    '--noise-seeds',
     type=int,
     nargs='+',
     default=list(range(10)),
@@ -94,8 +118,8 @@ parser.add_argument(
     help='the number of columns in the final plot'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],
@@ -121,5 +145,5 @@ for k, v in args.items():
     print('  >', k, '-->', v)
 print()
 args['datasets'] = {k: datasets[k] for k in args['datasets']}
-args['metrics'] = {k: v for k, v in [metrics[mt] for mt in args['metrics']]}
+args['metrics'] = {k: v for k, v in [metrics(mt) for mt in args['metrics']]}
 CorrelationExperiment.correlations(**args)

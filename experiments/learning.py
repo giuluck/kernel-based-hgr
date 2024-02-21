@@ -1,4 +1,3 @@
-import importlib.resources
 import os
 import pickle
 import time
@@ -76,8 +75,8 @@ class LearningExperiment(Experiment):
     """The name of the Weights & Biases project for logging, or None for no logging."""
 
     @property
-    def units(self) -> Iterable[int]:
-        return self.dataset.units if self._units is None else self._units
+    def units(self) -> List[int]:
+        return self.dataset.units if self._units is None else list(self._units)
 
     @property
     def batch(self) -> int:
@@ -96,7 +95,7 @@ class LearningExperiment(Experiment):
         else:
             return self._threshold
 
-    def _compute(self) -> Experiment.Result:
+    def _compute(self, folder: str) -> Experiment.Result:
         pl.seed_everything(SEED, workers=True)
         # retrieve train and validation data from splits and set parameters
         trn, val = self.dataset.data(folds=self.folds, seed=SEED)[self.fold]
@@ -114,7 +113,7 @@ class LearningExperiment(Experiment):
         # build trainer and callback
         progress = Progress()
         logger = InternalLogger()
-        history = History(key=self.key)
+        history = History(key=self.key, folder=folder)
         if self.wandb_project is not None:
             wandb_logger = WandbLogger(project=self.wandb_project, name=self.key, log_model='all')
             wandb_logger.experiment.config.update(self.configuration)
@@ -148,16 +147,15 @@ class LearningExperiment(Experiment):
             wandb.finish()
         # store external files and return result
         external = os.path.join('learning', f'{self.key}.pkl')
-        with importlib.resources.files('experiments.results') as folder:
-            filepath = os.path.join(folder, external)
-            assert not os.path.exists(filepath), f"Experiment '{self.key}' is already present in 'experiments.results'"
-            with open(filepath, 'wb') as file:
-                pickle.dump({
-                    'train_inputs': trn_data.x,
-                    'train_target': trn_data.y,
-                    'val_inputs': val_data.x,
-                    'val_target': val_data.y
-                }, file=file)
+        filepath = os.path.join(folder, external)
+        assert not os.path.exists(filepath), f"Experiment '{self.key}' is already present in the expected folder"
+        with open(filepath, 'wb') as file:
+            pickle.dump({
+                'train_inputs': trn_data.x,
+                'train_target': trn_data.y,
+                'val_inputs': val_data.x,
+                'val_target': val_data.y
+            }, file=file)
         return Experiment.Result(timestamp=start, execution=gap, history=history, external=external, **logger.results)
 
     @property
@@ -186,13 +184,14 @@ class LearningExperiment(Experiment):
                 f'{self.threshold}_{self.folds}_{self.fold}')
 
     @staticmethod
-    def calibration(datasets: Dict[str, SurrogateDataset],
+    def calibration(folder: str,
+                    datasets: Dict[str, SurrogateDataset],
                     batches: Iterable[int] = (512, 4096, -1),
                     units: Iterable[Iterable[int]] = ((32,), (256,), (32,) * 2, (256,) * 2, (32,) * 3, (256,) * 3),
                     steps: int = 1000,
                     folds: int = 5,
                     wandb_project: Optional[str] = None,
-                    formats: Iterable[str] = ('png',),
+                    extensions: Iterable[str] = ('png',),
                     plot: bool = False):
         def configuration(ds, bt, ut, fl):
             classification = datasets[ds].classification
@@ -215,10 +214,11 @@ class LearningExperiment(Experiment):
             folds=folds,
             steps=steps,
             metric=None,
-            wandb_project=wandb_project
+            wandb_project=wandb_project,
+            folder=folder
         )
         # get metric results and add time
-        results = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
+        results = LearningExperiment._metrics(folder=folder, experiments=experiments, configuration=configuration)
         times = []
         for index, experiment in experiments.items():
             info, _ = configuration(*index)
@@ -257,17 +257,18 @@ class LearningExperiment(Experiment):
                     axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'AUC'] else data[data['step'] > 20]['value'].max()))
                     axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {unit}")
             # store, print, and plot if necessary
-            for extension in formats:
+            for extension in extensions:
                 name = f'calibration_{kpi}_{dataset}.{extension}'
-                with importlib.resources.path('experiments.exports', name) as file:
-                    fig.savefig(file, bbox_inches='tight')
+                file = os.path.join(folder, 'exports', name)
+                fig.savefig(file, bbox_inches='tight')
             if plot:
                 fig.suptitle(f"Calibration {kpi} for {dataset.title()}")
                 fig.show()
             plt.close(fig)
 
     @staticmethod
-    def history(datasets: Dict[str, SurrogateDataset],
+    def history(folder: str,
+                datasets: Dict[str, SurrogateDataset],
                 metrics: Dict[str, HGR],
                 steps: int = 500,
                 folds: int = 5,
@@ -276,7 +277,7 @@ class LearningExperiment(Experiment):
                 alpha: Optional[float] = None,
                 threshold: Optional[float] = None,
                 wandb_project: Optional[str] = None,
-                formats: Iterable[str] = ('png',),
+                extensions: Iterable[str] = ('png',),
                 plot: bool = False):
         metrics = {'//': None, **metrics}
 
@@ -293,7 +294,9 @@ class LearningExperiment(Experiment):
         # iterate over dataset and batches
         for name, dataset in datasets.items():
             # use dictionaries for dataset to retrieve correct configuration
+            # use tuples for units so to avoid considering them as different values to test
             experiments = LearningExperiment.doe(
+                folder=folder,
                 file_name='learning',
                 save_time=0,
                 verbose=True,
@@ -301,7 +304,7 @@ class LearningExperiment(Experiment):
                 metric=metrics,
                 fold=list(range(folds)),
                 folds=folds,
-                _units=units,
+                _units=None if units is None else tuple(units),
                 _batch=batch,
                 _alpha=alpha,
                 _threshold=threshold,
@@ -309,7 +312,7 @@ class LearningExperiment(Experiment):
                 wandb_project=wandb_project
             )
             # get and plot metric results
-            group = LearningExperiment._metrics(experiments=experiments, configuration=configuration)
+            group = LearningExperiment._metrics(folder=folder, experiments=experiments, configuration=configuration)
             kpis = group['kpi'].unique()
             col = len(kpis) + 1
             fig, axes = plt.subplots(2, col, figsize=(5 * col, 8), sharex='all', sharey=None, tight_layout=True)
@@ -371,17 +374,18 @@ class LearningExperiment(Experiment):
             axes[0, 0].set_xticks([])
             axes[0, 0].set_yticks([])
             # store, print, and plot if necessary
-            for extension in formats:
+            for extension in extensions:
                 filename = f'history_{name}.{extension}'
-                with importlib.resources.path('experiments.exports', filename) as file:
-                    fig.savefig(file, bbox_inches='tight')
+                file = os.path.join(folder, 'exports', filename)
+                fig.savefig(file, bbox_inches='tight')
             if plot:
                 fig.suptitle(f"Learning History for {name.title()}")
                 fig.show()
             plt.close(fig)
 
     @staticmethod
-    def results(datasets: Dict[str, SurrogateDataset],
+    def results(folder: str,
+                datasets: Dict[str, SurrogateDataset],
                 metrics: Dict[str, HGR],
                 steps: int = 500,
                 folds: int = 5,
@@ -390,10 +394,11 @@ class LearningExperiment(Experiment):
                 alpha: Optional[float] = None,
                 threshold: Optional[float] = None,
                 wandb_project: Optional[str] = None,
-                formats: Iterable[str] = ('csv',)):
+                extensions: Iterable[str] = ('csv',)):
         # run experiments
         metrics = {'//': None, **metrics}
         experiments = LearningExperiment.doe(
+            folder=folder,
             file_name='learning',
             save_time=0,
             verbose=True,
@@ -401,7 +406,7 @@ class LearningExperiment(Experiment):
             metric=metrics,
             fold=list(range(folds)),
             folds=folds,
-            _units=units,
+            _units=None if units is None else tuple(units),
             _batch=batch,
             _alpha=alpha,
             _threshold=threshold,
@@ -418,8 +423,8 @@ class LearningExperiment(Experiment):
                 DIDI(excluded=dataset.surrogate_index, classification=dataset.classification, name=f'DIDI')
             ]
             configuration = dict(Dataset=ds, Penalizer=mt)
-            results = experiment.result(external=True)
-            history = results['history'][experiment.steps - 1]
+            results = experiment.result(external=folder)
+            history = results['history'].get(experiment.steps - 1, folder=folder)
             group.append({**configuration, 'split': 'train', 'kpi': 'Time', 'value': results['execution']})
             for split in ['train', 'val']:
                 x = results[f'{split}_inputs'].numpy(force=True)
@@ -440,28 +445,30 @@ class LearningExperiment(Experiment):
         group = group.reindex(columns=columns + [('Time', 'train', agg) for agg in ['mean', 'std', 'text']])
         if len(datasets) == 1:
             group = group.droplevel(0)
-        if 'csv' in formats:
+        if 'csv' in extensions:
             df = group[(c for c in group.columns if c[2] != 'text')]
-            with importlib.resources.path('experiments.exports', f'results.csv') as filepath:
-                df.to_csv(filepath, header=True, index=True)
-        if 'tex' in formats:
+            file = os.path.join(folder, 'exports', 'results.csv')
+            df.to_csv(file, header=True, index=True)
+        if 'tex' in extensions:
             df = group[(c for c in group.columns if c[2] == 'text')].droplevel(2, axis=1)
-            with importlib.resources.path('experiments.exports', f'results.tex') as filepath:
-                df.to_latex(filepath, multicolumn=True, multirow=False, multicolumn_format='c')
+            file = os.path.join(folder, 'exports', 'results.tex')
+            df.to_latex(file, multicolumn=True, multirow=False, multicolumn_format='c')
 
     @staticmethod
-    def usecase(steps: int = 500,
+    def usecase(folder: str,
+                steps: int = 500,
                 units: Optional[Iterable[int]] = None,
                 batch: Optional[int] = None,
                 alpha: Optional[float] = None,
                 threshold: Optional[float] = None,
                 wandb_project: Optional[str] = None,
-                formats: Iterable[str] = ('png',),
+                extensions: Iterable[str] = ('png',),
                 plot: bool = False):
         # run experiments
         dataset = Students()
         metrics = {'Unconstrained': None, 'Constrained': SingleKernelHGR()}
         experiments = LearningExperiment.doe(
+            folder=folder,
             file_name='learning',
             save_time=0,
             verbose=True,
@@ -469,7 +476,7 @@ class LearningExperiment(Experiment):
             metric=metrics,
             fold=0,
             folds=1,
-            _units=units,
+            _units=None if units is None else tuple(units),
             _batch=batch,
             _alpha=alpha,
             _threshold=threshold,
@@ -516,11 +523,11 @@ class LearningExperiment(Experiment):
             ax.set_xlabel(None)
             ax.set_ylabel(None)
         # store, print, and plot if necessary
-        for extension in formats:
+        for extension in extensions:
             for split, fig in figures.items():
                 filename = f'usecase_{split}.{extension}'
-                with importlib.resources.path('experiments.exports', filename) as file:
-                    fig.savefig(file, bbox_inches='tight')
+                file = os.path.join(folder, 'exports', filename)
+                fig.savefig(file, bbox_inches='tight')
         if plot:
             for split, fig in figures.items():
                 fig.suptitle(f"Use Case Results ({split.title()})")
@@ -529,13 +536,14 @@ class LearningExperiment(Experiment):
             plt.close(fig)
 
     @staticmethod
-    def _metrics(experiments: Dict[Any, 'LearningExperiment'],
+    def _metrics(folder: str,
+                 experiments: Dict[Any, 'LearningExperiment'],
                  configuration: Callable[[tuple], Tuple[Dict[str, Any], Iterable[Metric]]]) -> pd.DataFrame:
         results = []
+        folder = os.path.join(folder, 'results')
         for index, experiment in experiments.items():
-            with importlib.resources.files('experiments.results') as folder:
-                with open(os.path.join(folder, experiment.result.external), 'rb') as file:
-                    ext = pickle.load(file=file)
+            with open(os.path.join(folder, experiment.result.external), 'rb') as file:
+                ext = pickle.load(file=file)
             # retrieve input data
             xtr = ext['train_inputs'].numpy(force=True)
             ytr = ext['train_target'].numpy(force=True).flatten()
@@ -573,9 +581,8 @@ class LearningExperiment(Experiment):
                             outputs[f'{split}_{mtr.name}'].append(value)
                             results.append({**info, 'kpi': mtr.name, 'split': split.title(), 'value': value})
                 ext.update(outputs)
-                with importlib.resources.files('experiments.results') as folder:
-                    filepath = os.path.join(folder, experiment.result.external)
-                    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-                    with open(filepath, 'wb') as file:
-                        pickle.dump(ext, file=file)
+                filepath = os.path.join(folder, experiment.result.external)
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                with open(filepath, 'wb') as file:
+                    pickle.dump(ext, file=file)
         return pd.DataFrame(results)

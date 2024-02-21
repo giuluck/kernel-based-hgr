@@ -1,5 +1,4 @@
 import gc
-import importlib.resources
 import itertools
 import os
 import pickle
@@ -34,16 +33,12 @@ class Experiment(Cacheable):
             output = self._kwargs.get(key)
             if output is not None:
                 return output
-            # otherwise, try to look for the key in the external kwargs, and return it if found
-            output = self._external_kwargs.get(key)
-            if output is not None:
-                return output
-            # if the value was not found neither in the default nor in the external arguments, raise an exception
-            raise KeyError(f"Key '{key}' is not defined for experiment {self}")
+            # otherwise raise an exception
+            raise KeyError(f"Key '{key}' is either not defined for experiment {self} or in the external files")
 
-        def __call__(self, external: bool = False):
+        def __call__(self, external: Optional[str] = None):
             """Returns all the results in form of dictionary (include external results if needed)."""
-            return {**self._kwargs, **self._external_kwargs} if external else {**self._kwargs}
+            return {**self._kwargs} if external is None else {**self._kwargs, **self._external_kwargs(folder=external)}
 
         @property
         def configuration(self) -> Dict[str, Any]:
@@ -53,14 +48,12 @@ class Experiment(Cacheable):
         def external(self) -> Optional[str]:
             return self._external
 
-        @property
-        def _external_kwargs(self) -> Dict[str, Any]:
+        def _external_kwargs(self, folder: str) -> Dict[str, Any]:
             """The external kwargs."""
             if self._external is None:
                 return dict()
-            with importlib.resources.files('experiments.results') as folder:
-                with open(os.path.join(folder, self._external), 'rb') as file:
-                    return pickle.load(file=file)
+            with open(os.path.join(folder, 'results', self._external), 'rb') as file:
+                return pickle.load(file=file)
 
     @property
     @abstractmethod
@@ -69,14 +62,14 @@ class Experiment(Cacheable):
         pass
 
     @abstractmethod
-    def _compute(self) -> Result:
-        """Computes the results of the experiment."""
+    def _compute(self, folder: str) -> Result:
+        """Computes the results of the experiment and stores them in the given folder."""
         pass
 
     @property
     def result(self) -> Result:
         """Returns the result of the experiment. If the results were not cached yet, runs the experiment."""
-        return self._lazy_initialization(attribute='result', function=self._compute)
+        return self._cache['result']
 
     @property
     def output(self) -> Dict[str, Any]:
@@ -84,15 +77,18 @@ class Experiment(Cacheable):
         return {**self.configuration, 'result': self.result.configuration}
 
     @classmethod
-    def doe(cls, file_name: str, save_time: int, verbose: bool, **configuration: Any) -> dict:
+    def doe(cls, folder: str, file_name: str, save_time: int, verbose: bool, **configuration: Any) -> dict:
         """Runs a combinatorial design of experiments (DoE) with the given characteristics. If possible, loads results
         from the given file which must be stored in the 'results' sub-package. When experiments are running, stores
         their results in the given file every <save_time> seconds."""
         assert len(configuration) > 0, "Empty configuration passed"
         # retrieve the path of the results and load the pickle dictionary if the file exists
-        with importlib.resources.path('experiments.results', f'{file_name}.pkl') as filepath:
-            pass
-        if filepath.exists():
+        exp_folder = os.path.join(folder, 'exports')
+        os.makedirs(exp_folder, exist_ok=True)
+        res_folder = os.path.join(folder, 'results')
+        os.makedirs(res_folder, exist_ok=True)
+        filepath = os.path.join(res_folder, f'{file_name}.pkl')
+        if os.path.exists(filepath):
             with open(filepath, 'rb') as file:
                 results = pickle.load(file=file)
         else:
@@ -147,6 +143,7 @@ class Experiment(Cacheable):
                     for par, val in experiment.configuration.items():
                         print(f'  > {par.upper()}: {val}')
                     print(end='', flush=True)
+                experiment._cache['result'] = experiment._compute(folder=res_folder)
                 results[key] = experiment.output
                 # whenever the gap is larger than the expected time save the results
                 # otherwise, flag that results must be saved at the end of the doe
@@ -179,19 +176,18 @@ class Experiment(Cacheable):
         return experiments
 
     @staticmethod
-    def clear_results(file: List[str],
+    def clear_results(folder: str,
+                      file: List[str],
                       dataset: Optional[Iterable[str]] = None,
                       metric: Optional[Iterable[Optional[str]]] = None,
                       pattern: Optional[str] = None,
                       custom: Optional[Callable[[dict], bool]] = None,
                       force: bool = False):
+        folder = os.path.join(folder, 'results')
         # build sets and pattern
         pattern = None if pattern is None else re.compile(pattern)
         datasets = None if dataset is None else set(dataset)
         metrics = None if metric is None else set(metric)
-        # get the folder path
-        with importlib.resources.files('experiments.results') as folder:
-            pass
         # iterate over all the files
         for filename in file:
             # if it does not exist, there is nothing to clear
@@ -228,7 +224,7 @@ class Experiment(Cacheable):
                     # -------------------------------------------------------------------------------------
                     # QUICK PATCH TO MULTIPLE EXTERNAL FILES IN HISTORY CALLBACK FOR LEARNING EXPERIMENTS
                     if res['experiment'] == 'learning':
-                        history = res['result']['history'].folder
+                        history = res['result']['history'].subfolder
                         histories.append(history)
                         print(f" (plus history files in {history})", end='')
                     # -------------------------------------------------------------------------------------
@@ -253,9 +249,8 @@ class Experiment(Cacheable):
                 shutil.rmtree(os.path.join(folder, history))
 
     @staticmethod
-    def clear_exports():
-        with importlib.resources.files('experiments.exports') as folder:
-            for file in os.listdir(folder):
-                if file != '__pycache__' and not file.endswith('.py'):
-                    print(f'CLEAR: export file {file}')
-                    os.remove(os.path.join(folder, file))
+    def clear_exports(folder: str):
+        folder = os.path.join(folder, 'exports')
+        for file in os.listdir(folder):
+            print(f'CLEAR: export file {file}')
+            os.remove(os.path.join(folder, file))

@@ -5,7 +5,5 @@ venv
 temp
 wandb
 data/students.csv
-experiments/exports/*
-experiments/results/*
-!experiments/exports/*.py
-!experiments/results/*.py
+results
+exports

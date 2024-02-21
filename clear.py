@@ -9,6 +9,13 @@ FILES = ['learning', 'correlation', 'analysis']
 parser = argparse.ArgumentParser(description='Clears the results in the experiment files')
 parser.add_argument(
     '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
+    '-e',
     '--file',
     type=str,
     nargs='+',
@@ -51,7 +58,7 @@ parser.add_argument(
 # parse arguments and decide what to clear
 args = parser.parse_args().__dict__
 print('Starting exports clearing procedure...')
-Experiment.clear_exports()
+Experiment.clear_exports(folder=args['folder'])
 if args.pop('exports') is False:
     print('Starting experiments clearing procedure...')
     for k, v in args.items():

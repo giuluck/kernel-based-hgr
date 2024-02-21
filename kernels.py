@@ -58,6 +58,13 @@ def metrics(key):
 # build argument parser
 parser = argparse.ArgumentParser(description='Inspect the HGR kernels on a given dataset')
 parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
     '-d',
     '--datasets',
     type=str,
@@ -82,8 +89,8 @@ parser.add_argument(
     help='the noise values used in the experiments'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],

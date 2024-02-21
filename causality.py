@@ -19,6 +19,13 @@ datasets = dict(
 # build argument parser
 parser = argparse.ArgumentParser(description='Leverages HGR to assume the direction of the causal link')
 parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
     '-d',
     '--datasets',
     type=str,
@@ -36,8 +43,8 @@ parser.add_argument(
     help='the features between which the importance is computed'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],

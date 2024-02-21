@@ -4,7 +4,6 @@ import os
 import warnings
 
 from experiments import LearningExperiment
-from src.hgr import DoubleKernelHGR, SingleKernelHGR, AdversarialHGR, DensityHGR
 
 # noinspection DuplicatedCode
 os.environ['WANDB_SILENT'] = 'true'
@@ -18,18 +17,18 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
 # build argument parser
 parser = argparse.ArgumentParser(description='Run the practical use case tests')
 parser.add_argument(
+    '-f',
+    '--folder',
+    type=str,
+    default='.',
+    help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
     '-s',
     '--steps',
     type=int,
     default=500,
     help='the number of steps to run for each network'
-)
-parser.add_argument(
-    '-p',
-    '--wandb-project',
-    type=str,
-    nargs='?',
-    help='the name of the Weights & Biases project for logging, or None for no logging'
 )
 parser.add_argument(
     '-u',
@@ -60,8 +59,15 @@ parser.add_argument(
     help='the alpha value used for the penalty constraint (if not passed, uses automatic tuning)'
 )
 parser.add_argument(
-    '-f',
-    '--formats',
+    '-p',
+    '--wandb-project',
+    type=str,
+    nargs='?',
+    help='the name of the Weights & Biases project for logging, or None for no logging'
+)
+parser.add_argument(
+    '-e',
+    '--extensions',
     type=str,
     nargs='*',
     default=['png'],
