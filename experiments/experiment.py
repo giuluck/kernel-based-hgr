@@ -143,7 +143,7 @@ class Experiment(Cacheable):
                     for par, val in experiment.configuration.items():
                         print(f'  > {par.upper()}: {val}')
                     print(end='', flush=True)
-                experiment._cache['result'] = experiment._compute(folder=res_folder)
+                experiment._cache['result'] = experiment._compute(folder=folder)
                 results[key] = experiment.output
                 # whenever the gap is larger than the expected time save the results
                 # otherwise, flag that results must be saved at the end of the doe
@@ -251,6 +251,8 @@ class Experiment(Cacheable):
     @staticmethod
     def clear_exports(folder: str):
         folder = os.path.join(folder, 'exports')
+        if not os.path.exists(folder):
+            return
         for file in os.listdir(folder):
             print(f'CLEAR: export file {file}')
             os.remove(os.path.join(folder, file))

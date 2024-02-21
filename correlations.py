@@ -77,7 +77,6 @@ parser.add_argument(
     '--metrics',
     type=str,
     nargs='*',
-    choices=list(metrics),
     default=['kb', 'sk', 'nn', 'kde', 'rdc'],
     help='the metric used to compute the correlations'
 )

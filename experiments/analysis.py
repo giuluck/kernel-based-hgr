@@ -10,7 +10,7 @@ import seaborn as sns
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.stats import pearsonr
 
-from experiments import Experiment
+from experiments.experiment import Experiment
 from src.datasets import Dataset
 from src.hgr import DoubleKernelHGR
 

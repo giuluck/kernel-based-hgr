@@ -54,7 +54,7 @@ class CorrelationExperiment(Experiment):
         # store external files only for NN kernels, in the other cases include the additional results in the object
         if isinstance(self.metric, AdversarialHGR):
             external = os.path.join('correlation', f'{self.key}.pkl')
-            filepath = os.path.join(folder, external)
+            filepath = os.path.join(folder, 'results', external)
             # overwrite files rather than asserting that they are not present since an abrupt interruption of the
             # DoE might cause leaking external files to be stored while the original results are not
             if os.path.exists(filepath):
@@ -291,7 +291,12 @@ class CorrelationExperiment(Experiment):
             fa, gb = {'index': a}, {'index': b}
             # retrieve metric kernels
             for name, metric in metrics.items():
-                _, fa_current, gb_current = metric.kernels(a=a, b=b, folder=folder, experiment=experiments[(dataset.key, name)])
+                _, fa_current, gb_current = metric.kernels(
+                    a=a,
+                    b=b,
+                    folder=folder,
+                    experiment=experiments[(dataset.key, name)]
+                )
                 # for all the non-oracle kernels, switch sign to match kernel if necessary
                 if name != 'ORACLE':
                     fa_signs = np.sign(fa_current * fa['ORACLE'])

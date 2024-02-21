@@ -147,7 +147,7 @@ class LearningExperiment(Experiment):
             wandb.finish()
         # store external files and return result
         external = os.path.join('learning', f'{self.key}.pkl')
-        filepath = os.path.join(folder, external)
+        filepath = os.path.join(folder, 'results', external)
         assert not os.path.exists(filepath), f"Experiment '{self.key}' is already present in the expected folder"
         with open(filepath, 'wb') as file:
             pickle.dump({
@@ -540,9 +540,8 @@ class LearningExperiment(Experiment):
                  experiments: Dict[Any, 'LearningExperiment'],
                  configuration: Callable[[tuple], Tuple[Dict[str, Any], Iterable[Metric]]]) -> pd.DataFrame:
         results = []
-        folder = os.path.join(folder, 'results')
         for index, experiment in experiments.items():
-            with open(os.path.join(folder, experiment.result.external), 'rb') as file:
+            with open(os.path.join(folder, 'results', experiment.result.external), 'rb') as file:
                 ext = pickle.load(file=file)
             # retrieve input data
             xtr = ext['train_inputs'].numpy(force=True)
@@ -570,9 +569,11 @@ class LearningExperiment(Experiment):
             else:
                 if not np.all([len(v) == 0 for v in outputs.values()]):
                     print(f"WARNING: recomputing metrics for {experiment.key} due to possible serialization errors")
+                    for v in outputs.values():
+                        v.clear()
                 for step in tqdm(range(experiment.steps), desc=f'Computing Metrics for {experiment.key}'):
                     info['step'] = step
-                    hst = experiment.result['history'][step]
+                    hst = experiment.result['history'].get(step, folder=folder)
                     ptr = hst['train_predictions'].numpy(force=True).flatten()
                     pvl = hst['val_predictions'].numpy(force=True).flatten()
                     for mtr in metrics:
@@ -581,7 +582,7 @@ class LearningExperiment(Experiment):
                             outputs[f'{split}_{mtr.name}'].append(value)
                             results.append({**info, 'kpi': mtr.name, 'split': split.title(), 'value': value})
                 ext.update(outputs)
-                filepath = os.path.join(folder, experiment.result.external)
+                filepath = os.path.join(folder, 'results', experiment.result.external)
                 os.makedirs(os.path.dirname(filepath), exist_ok=True)
                 with open(filepath, 'wb') as file:
                     pickle.dump(ext, file=file)

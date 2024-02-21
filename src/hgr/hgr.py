@@ -39,7 +39,11 @@ class KernelsHGR(HGR):
         """Returns the f(a) and g(b) kernels given the two input vectors and the result of the experiments."""
         pass
 
-    def kernels(self, a: np.ndarray, b: np.ndarray, folder: str, experiment: Any) -> Tuple[float, np.ndarray, np.ndarray]:
+    def kernels(self,
+                a: np.ndarray,
+                b: np.ndarray,
+                folder: str,
+                experiment: Any) -> Tuple[float, np.ndarray, np.ndarray]:
         """Returns the f(a) and g(b) kernels, along with the computed correlation, given the two input vectors and the
         result of the experiments."""
         assert self == experiment.metric, f'Unexpected metric {experiment.metric} when computing kernels'
