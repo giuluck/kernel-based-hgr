@@ -1,9 +1,11 @@
 import argparse
 import logging
 import os
+import re
 import warnings
 
 from experiments import LearningExperiment
+from src.hgr import AdversarialHGR, DoubleKernelHGR, SingleKernelHGR, DensityHGR
 
 # noinspection DuplicatedCode
 os.environ['WANDB_SILENT'] = 'true'
@@ -14,6 +16,26 @@ for name in ["lightning_fabric", "pytorch_lightning.utilities.rank_zero", "pytor
     log.propagate = False
     log.setLevel(logging.ERROR)
 
+
+# function to retrieve the valid metric
+def metrics(key):
+    if key == 'nn':
+        return AdversarialHGR()
+    elif key == 'kde':
+        return DensityHGR()
+    elif key == 'kb':
+        return DoubleKernelHGR()
+    elif key == 'sk':
+        return SingleKernelHGR()
+    elif re.compile('kb-([0-9]+)').match(key):
+        degree = int(key[3:])
+        return DoubleKernelHGR(degree_a=degree, degree_b=degree)
+    elif re.compile('sk-([0-9]+)').match(key):
+        return SingleKernelHGR(degree=int(key[3:]))
+    else:
+        raise KeyError(f"Invalid key '{key}' for metric")
+
+
 # build argument parser
 parser = argparse.ArgumentParser(description='Run the practical use case tests')
 parser.add_argument(
@@ -22,6 +44,13 @@ parser.add_argument(
     type=str,
     default='.',
     help='the path where to search and store the results and the exports'
+)
+parser.add_argument(
+    '-m',
+    '--metric',
+    type=str,
+    default='sk',
+    help='the metric used as penalty in the constrained approach'
 )
 parser.add_argument(
     '-s',
@@ -85,4 +114,5 @@ print("Starting experiment 'usecase'...")
 for k, v in args.items():
     print('  >', k, '-->', v)
 print()
+args['metric'] = metrics(args['metric'])
 LearningExperiment.usecase(**args)

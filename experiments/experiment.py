@@ -52,7 +52,7 @@ class Experiment(Cacheable):
             """The external kwargs."""
             if self._external is None:
                 return dict()
-            with open(os.path.join(folder, 'results', self._external), 'rb') as file:
+            with open(f'{folder}/results/{self._external}', 'rb') as file:
                 return pickle.load(file=file)
 
     @property
@@ -83,11 +83,11 @@ class Experiment(Cacheable):
         their results in the given file every <save_time> seconds."""
         assert len(configuration) > 0, "Empty configuration passed"
         # retrieve the path of the results and load the pickle dictionary if the file exists
-        exp_folder = os.path.join(folder, 'exports')
+        exp_folder = f'{folder}/exports'
         os.makedirs(exp_folder, exist_ok=True)
-        res_folder = os.path.join(folder, 'results')
+        res_folder = f'{folder}/results'
         os.makedirs(res_folder, exist_ok=True)
-        filepath = os.path.join(res_folder, f'{file_name}.pkl')
+        filepath = f'{res_folder}/{file_name}.pkl'
         if os.path.exists(filepath):
             with open(filepath, 'rb') as file:
                 results = pickle.load(file=file)
@@ -177,26 +177,26 @@ class Experiment(Cacheable):
 
     @staticmethod
     def clear_results(folder: str,
-                      file: List[str],
+                      experiments: List[str],
                       dataset: Optional[Iterable[str]] = None,
                       metric: Optional[Iterable[Optional[str]]] = None,
                       pattern: Optional[str] = None,
                       custom: Optional[Callable[[dict], bool]] = None,
                       force: bool = False):
-        folder = os.path.join(folder, 'results')
+        folder = f'{folder}/results'
         # build sets and pattern
         pattern = None if pattern is None else re.compile(pattern)
         datasets = None if dataset is None else set(dataset)
         metrics = None if metric is None else set(metric)
         # iterate over all the files
-        for filename in file:
+        for filename in experiments:
             # if it does not exist, there is nothing to clear
-            filepath = os.path.join(folder, f'{filename}.pkl')
+            filepath = f'{folder}/{filename}.pkl'
             if not os.path.exists(filepath):
                 continue
             # otherwise, retrieve the dictionary of results
-            with open(filepath, 'rb') as file:
-                results = pickle.load(file=file)
+            with open(filepath, 'rb') as experiments:
+                results = pickle.load(file=experiments)
             print(f"Retrieved {len(results)} experiments from '{filename}.pkl'")
             # build a dictionary of results to keep
             # a result must if there is at least a non-null matcher that does not match
@@ -234,25 +234,27 @@ class Experiment(Cacheable):
                                f"'{filename}.pkl', leaving {len(output)} experiments left? (Y/N)\n")
                 if result.lower() not in ['y', 'yes']:
                     print(f"\nClearing procedure for file '{filename}.pkl' aborted\n")
-                    break
+                    continue
                 else:
-                    print(f"\nClearing procedure for file '{filename}.pkl' completed\n")
+                    print(f"\nClearing procedure for file '{filename}.pkl' started\n")
             else:
-                print(f"Removed {len(results) - len(output)} experiments from '{filename}.pkl ({len(output)} left)\n")
+                print(f"Removing {len(results) - len(output)} experiments from '{filename}.pkl ({len(output)} left)\n")
             # dump the file before writing to check if it is pickle-compliant
             dump = pickle.dumps(output)
-            with open(filepath, 'wb') as file:
-                file.write(dump)
-            for external in externals:
-                os.remove(os.path.join(folder, external))
-            for history in histories:
-                shutil.rmtree(os.path.join(folder, history))
+            with open(filepath, 'wb') as experiments:
+                experiments.write(dump)
+            if len(externals) > 0:
+                for external in tqdm(externals, desc='Removing External Files'):
+                    os.remove(f'{folder}/{external}')
+            if len(histories) > 0:
+                for history in tqdm(histories, desc='Removing History Files'):
+                    shutil.rmtree(f'{folder}/{history}')
 
     @staticmethod
     def clear_exports(folder: str):
-        folder = os.path.join(folder, 'exports')
+        folder = f'{folder}/exports'
         if not os.path.exists(folder):
             return
         for file in os.listdir(folder):
             print(f'CLEAR: export file {file}')
-            os.remove(os.path.join(folder, file))
+            os.remove(f'{folder}/{file}')

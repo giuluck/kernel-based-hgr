@@ -50,7 +50,7 @@ class History(pl.Callback):
 
     @property
     def subfolder(self) -> str:
-        return os.path.join('learning', self._key)
+        return f'learning/{self._key}'
 
     def on_train_batch_end(self,
                            trainer: pl.Trainer,
@@ -64,7 +64,7 @@ class History(pl.Callback):
             model_state=pl_module.state_dict()
         )
         name = f'{self._key}_step-{trainer.global_step - 1}.pkl'
-        filepath = os.path.join(self._folder, 'results', self.subfolder, name)
+        filepath = f'{self._folder}/results/{self.subfolder}/{name}'
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, 'wb') as file:
             pickle.dump(results, file=file)
@@ -73,7 +73,7 @@ class History(pl.Callback):
     def get(self, item: int, folder: str) -> Dict[str, Any]:
         name = f'{self._key}_step-{item}.pkl'
         assert name in self._external, f"External results for experiment {self._key} are not available at step {item}"
-        with open(os.path.join(folder, 'results', self.subfolder, name), 'rb') as file:
+        with open(f'{folder}/results/{self.subfolder}/{name}', 'rb') as file:
             return pickle.load(file=file)
 
 

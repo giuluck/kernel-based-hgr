@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from experiments.experiment import Experiment
 from src.datasets import SurrogateDataset, Students
-from src.hgr import HGR, SingleKernelHGR
+from src.hgr import HGR
 from src.learning import MultiLayerPerceptron, Data, Loss, Accuracy, Metric, InternalLogger, Progress, History, \
     Correlation
 from src.learning.metrics import DIDI
@@ -146,8 +146,8 @@ class LearningExperiment(Experiment):
         if self.wandb_project is not None:
             wandb.finish()
         # store external files and return result
-        external = os.path.join('learning', f'{self.key}.pkl')
-        filepath = os.path.join(folder, 'results', external)
+        external = f'learning/{self.key}.pkl'
+        filepath = f'{folder}/results/{external}'
         assert not os.path.exists(filepath), f"Experiment '{self.key}' is already present in the expected folder"
         with open(filepath, 'wb') as file:
             pickle.dump({
@@ -231,12 +231,11 @@ class LearningExperiment(Experiment):
             } for step in range(experiment.steps)]
         results = pd.concat((results, pd.DataFrame(times)))
         # plot results
-        sns.set_context('notebook')
-        sns.set_style('whitegrid')
+        sns.set(context='poster', style='whitegrid', font_scale=1)
         for (dataset, kpi), data in results.groupby(['dataset', 'kpi']):
             cl = len(units)
             rw = len(batches)
-            fig, axes = plt.subplots(rw, cl, figsize=(5 * cl, 4 * rw), sharex='all', sharey='all', tight_layout=True)
+            fig, axes = plt.subplots(rw, cl, figsize=(6 * cl, 5 * rw), sharex='all', sharey='all', tight_layout=True)
             # used to index the axes in case either or both hidden units and batches have only one value
             axes = np.array(axes).reshape(rw, cl)
             for i, batch in enumerate(batches):
@@ -253,13 +252,14 @@ class LearningExperiment(Experiment):
                         palette=['black'] if kpi == 'Time' else PALETTE[1:3],
                         ax=axes[i, j]
                     )
+                    handles, labels = axes[i, j].get_legend_handles_labels()
+                    axes[i, j].legend(handles, labels, title=None)
                     axes[i, j].set_ylabel(kpi)
                     axes[i, j].set_ylim((0, 1 if kpi in ['R2', 'AUC'] else data[data['step'] > 20]['value'].max()))
-                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {unit}")
+                    axes[i, j].set_title(f"Batch Size: {'Full' if batch == -1 else batch} - Units: {unit}", pad=10)
             # store, print, and plot if necessary
             for extension in extensions:
-                name = f'calibration_{kpi}_{dataset}.{extension}'
-                file = os.path.join(folder, 'exports', name)
+                file = f'{folder}/exports/calibration_{kpi}_{dataset}.{extension}'
                 fig.savefig(file, bbox_inches='tight')
             if plot:
                 fig.suptitle(f"Calibration {kpi} for {dataset.title()}")
@@ -286,8 +286,8 @@ class LearningExperiment(Experiment):
             # return a list of metrics for loss, accuracy, correlation, and optionally surrogate fairness
             return dict(Dataset=ds, Penalizer=mt, fold=fl), [
                 Accuracy(classification=d.classification),
-                Correlation(excluded=d.excluded_index, algorithm='sk', name=f'Protected HGR'),
-                DIDI(excluded=d.surrogate_index, classification=d.classification, name=f'Surrogate DIDI')
+                Correlation(excluded=d.excluded_index, algorithm='sk'),
+                DIDI(excluded=d.surrogate_index, classification=d.classification)
             ]
 
         sns.set(context='poster', style='whitegrid')
@@ -376,7 +376,7 @@ class LearningExperiment(Experiment):
             # store, print, and plot if necessary
             for extension in extensions:
                 filename = f'history_{name}.{extension}'
-                file = os.path.join(folder, 'exports', filename)
+                file = f'{folder}/exports/{filename}'
                 fig.savefig(file, bbox_inches='tight')
             if plot:
                 fig.suptitle(f"Learning History for {name.title()}")
@@ -414,32 +414,50 @@ class LearningExperiment(Experiment):
             wandb_project=wandb_project
         )
         group = []
+        kpi_names = ['SCORE', 'HGR-KB', 'HGR-SK', 'HGR-NN', 'DIDI']
         # retrieve results
-        for (ds, mt, fl), experiment in tqdm(experiments.items(), desc='Computing KPIs'):
+        for (ds, mt, fl), experiment in tqdm(experiments.items(), desc='Fetching KPIs'):
             dataset = datasets[ds]
             kpis = [
-                Accuracy(classification=dataset.classification, name='SCORE'),
-                Correlation(excluded=dataset.excluded_index, algorithm='kb', name=f'HGR'),
-                DIDI(excluded=dataset.surrogate_index, classification=dataset.classification, name=f'DIDI')
+                Accuracy(classification=dataset.classification),
+                Correlation(excluded=dataset.excluded_index, algorithm='kb'),
+                Correlation(excluded=dataset.excluded_index, algorithm='sk'),
+                Correlation(excluded=dataset.excluded_index, algorithm='nn'),
+                DIDI(excluded=dataset.surrogate_index, classification=dataset.classification)
             ]
             configuration = dict(Dataset=ds, Penalizer=mt)
             results = experiment.result(external=folder)
             history = results['history'].get(experiment.steps - 1, folder=folder)
             group.append({**configuration, 'split': 'train', 'kpi': 'Time', 'value': results['execution']})
+            # if present, retrieve external results, otherwise store them if necessary
+            store_external = False
+            with open(f'{folder}/results/{experiment.result.external}', 'rb') as file:
+                external = pickle.load(file=file)
+            external_results = external.get('results', dict())
             for split in ['train', 'val']:
                 x = results[f'{split}_inputs'].numpy(force=True)
                 y = results[f'{split}_target'].numpy(force=True).flatten()
                 p = history[f'{split}_predictions'].numpy(force=True).flatten()
-                for kpi in kpis:
-                    group.append({**configuration, 'split': split, 'kpi': kpi.name, 'value': kpi(x=x, y=y, p=p)})
+                for name, kpi in zip(kpi_names, kpis):
+                    value = external_results.get(f'{split}_{kpi.name}')
+                    if value is None:
+                        store_external = True
+                        value = kpi(x=x, y=y, p=p)
+                        external_results[f'{split}_{kpi.name}'] = value
+                    group.append({**configuration, 'split': split, 'kpi': name, 'value': value})
+            if store_external:
+                external['results'] = external_results
+                with open(f'{folder}/results/{experiment.result.external}', 'wb') as file:
+                    pickle.dump(external, file=file)
         group = pd.DataFrame(group)
         group = group.groupby(['Dataset', 'Penalizer', 'split', 'kpi'], as_index=False).agg(['mean', 'std'])
         group.columns = ['Dataset', 'Penalizer', 'split', 'kpi', 'mean', 'std']
-        group['text'] = [f"{row['mean']:.3f} ± {row['std']:.2f}" for _, row in group.iterrows()]
+        group['text'] = [f"{row['mean']:03.0f} ± {row['std']:02.0f}" if np.all(row['kpi'] == 'Time') else
+                         f"{row['mean']:.2f} ± {row['std']:.2f}" for _, row in group.iterrows()]
         group = group.pivot(index=['Dataset', 'Penalizer'], columns=['kpi', 'split']).reorder_levels([1, 2, 0], axis=1)
         group = group.reindex(index=[(d, m) for d in datasets.keys() for m in metrics.keys()])
         columns = [(kpi, split, agg)
-                   for kpi in ['SCORE', 'HGR', 'DIDI']
+                   for kpi in kpi_names
                    for split in ['train', 'val']
                    for agg in ['mean', 'std', 'text']]
         group = group.reindex(columns=columns + [('Time', 'train', agg) for agg in ['mean', 'std', 'text']])
@@ -447,15 +465,16 @@ class LearningExperiment(Experiment):
             group = group.droplevel(0)
         if 'csv' in extensions:
             df = group[(c for c in group.columns if c[2] != 'text')]
-            file = os.path.join(folder, 'exports', 'results.csv')
+            file = f'{folder}/exports/results.csv'
             df.to_csv(file, header=True, index=True)
         if 'tex' in extensions:
             df = group[(c for c in group.columns if c[2] == 'text')].droplevel(2, axis=1)
-            file = os.path.join(folder, 'exports', 'results.tex')
+            file = f'{folder}/exports/results.tex'
             df.to_latex(file, multicolumn=True, multirow=False, multicolumn_format='c')
 
     @staticmethod
     def usecase(folder: str,
+                metric: HGR,
                 steps: int = 500,
                 units: Optional[Iterable[int]] = None,
                 batch: Optional[int] = None,
@@ -466,7 +485,7 @@ class LearningExperiment(Experiment):
                 plot: bool = False):
         # run experiments
         dataset = Students()
-        metrics = {'Unconstrained': None, 'Constrained': SingleKernelHGR()}
+        metrics = {'Unconstrained': None, 'Constrained': metric}
         experiments = LearningExperiment.doe(
             folder=folder,
             file_name='learning',
@@ -493,7 +512,7 @@ class LearningExperiment(Experiment):
         surrogates = {name: (val.loc[xtr.index], val.loc[xts.index]) for name, val in dataset.surrogates.items()}
         outputs = []
         for metric, experiment in experiments.items():
-            history = experiment.result['history'][experiment.steps - 1]
+            history = experiment.result['history'].get(experiment.steps - 1, folder=folder)
             for i, (x, y), split in zip([0, 1], [(xtr.values, ytr.values), (xts.values, yts.values)], ['train', 'val']):
                 p = history[f'{split}_predictions'].numpy(force=True).flatten()
                 outputs.append({'penalizer': metric, 'split': split, 'kpi': 'R2', 'value': r2(x=x, y=y, p=p)})
@@ -525,8 +544,7 @@ class LearningExperiment(Experiment):
         # store, print, and plot if necessary
         for extension in extensions:
             for split, fig in figures.items():
-                filename = f'usecase_{split}.{extension}'
-                file = os.path.join(folder, 'exports', filename)
+                file = f'{folder}/exports/usecase_{split}.{extension}'
                 fig.savefig(file, bbox_inches='tight')
         if plot:
             for split, fig in figures.items():
@@ -541,7 +559,7 @@ class LearningExperiment(Experiment):
                  configuration: Callable[[tuple], Tuple[Dict[str, Any], Iterable[Metric]]]) -> pd.DataFrame:
         results = []
         for index, experiment in experiments.items():
-            with open(os.path.join(folder, 'results', experiment.result.external), 'rb') as file:
+            with open(f'{folder}/results/{experiment.result.external}', 'rb') as file:
                 ext = pickle.load(file=file)
             # retrieve input data
             xtr = ext['train_inputs'].numpy(force=True)
@@ -582,7 +600,7 @@ class LearningExperiment(Experiment):
                             outputs[f'{split}_{mtr.name}'].append(value)
                             results.append({**info, 'kpi': mtr.name, 'split': split.title(), 'value': value})
                 ext.update(outputs)
-                filepath = os.path.join(folder, 'results', experiment.result.external)
+                filepath = f'{folder}/results/{experiment.result.external}'
                 os.makedirs(os.path.dirname(filepath), exist_ok=True)
                 with open(filepath, 'wb') as file:
                     pickle.dump(ext, file=file)

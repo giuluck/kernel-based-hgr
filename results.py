@@ -61,7 +61,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=['communities', 'adult', 'census'],
+    default=['census', 'communities', 'adult'],
     help='the datasets on which to run the experiment'
 )
 parser.add_argument(
@@ -69,7 +69,7 @@ parser.add_argument(
     '--metrics',
     type=str,
     nargs='*',
-    default=['sk', 'kb', 'nn'],
+    default=['kb', 'sk', 'nn'],
     help='the metrics used as penalties'
 )
 parser.add_argument(

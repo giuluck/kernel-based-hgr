@@ -69,7 +69,7 @@ parser.add_argument(
     '--metrics',
     type=str,
     nargs='*',
-    default=['sk', 'kb', 'nn'],
+    default=['kb', 'sk', 'nn'],
     help='the metrics used as penalties'
 )
 parser.add_argument(

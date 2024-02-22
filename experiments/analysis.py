@@ -100,7 +100,7 @@ class AnalysisExperiment(Experiment):
                 # store and plot if necessary
                 for extension in extensions:
                     name = f'importance_{ds}_{var}.{extension}'
-                    file = os.path.join(folder, 'exports', name)
+                    file = f'{folder}/exports/{name}'
                     fig.savefig(file, bbox_inches='tight')
                 if plot:
                     fig.suptitle(f"Importance Analysis for feature '{var}' of {ds.title()} dataset")
@@ -185,8 +185,7 @@ class AnalysisExperiment(Experiment):
                 ax.set_ylim((0, 1))
                 # store and plot if necessary
                 for extension in extensions:
-                    name = f'causality_{ds}_{f1}_{f2}.{extension}'
-                    file = os.path.join(folder, 'exports', name)
+                    file = f'{folder}/exports/causality_{ds}_{f1}_{f2}.{extension}'
                     fig.savefig(file, bbox_inches='tight')
                 if plot:
                     fig.suptitle(f"Causal Analysis for {ds.title()} dataset")
@@ -238,10 +237,8 @@ class AnalysisExperiment(Experiment):
         axes['proj'].scatter(fa, gb, color='black', edgecolor='black', alpha=0.6, s=10)
         # store and plot if necessary
         for extension in extensions:
-            name = f'example.{extension}'
-            exports = os.path.join(folder, 'exports')
-            os.makedirs(exports, exist_ok=True)
-            file = os.path.join(exports, name)
-            fig.savefig(file, bbox_inches='tight')
+            folder = f'{folder}/exports'
+            os.makedirs(folder, exist_ok=True)
+            fig.savefig(f'{folder}/example.{extension}', bbox_inches='tight')
         if plot:
             fig.show()

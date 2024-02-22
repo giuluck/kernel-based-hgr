@@ -53,8 +53,8 @@ class CorrelationExperiment(Experiment):
         gap = time.time() - start
         # store external files only for NN kernels, in the other cases include the additional results in the object
         if isinstance(self.metric, AdversarialHGR):
-            external = os.path.join('correlation', f'{self.key}.pkl')
-            filepath = os.path.join(folder, 'results', external)
+            external = f'correlation/{self.key}.pkl'
+            filepath = f'{folder}/results/{external}'
             # overwrite files rather than asserting that they are not present since an abrupt interruption of the
             # DoE might cause leaking external files to be stored while the original results are not
             if os.path.exists(filepath):
@@ -129,8 +129,7 @@ class CorrelationExperiment(Experiment):
             ax.grid(True, which='major')
             # store, print, and plot if necessary
             for extension in extensions:
-                name = f'monotonicity_{dataset.key}.{extension}'
-                file = os.path.join(folder, 'exports', name)
+                file = f'{folder}/exports/monotonicity_{dataset.key}.{extension}'
                 fig.savefig(file, bbox_inches='tight')
             if plot:
                 config = dataset.configuration
@@ -251,7 +250,7 @@ class CorrelationExperiment(Experiment):
         # store, print, and plot if necessary
         key = 'test' if test else 'train'
         for extension in extensions:
-            file = os.path.join(folder, 'exports', f'correlations_{key}.{extension}')
+            file = f'{folder}/exports/correlations_{key}.{extension}'
             fig.savefig(file, bbox_inches='tight')
         if plot:
             fig.suptitle(f'Computed Correlations ({key.title()})')
@@ -374,8 +373,7 @@ class CorrelationExperiment(Experiment):
             ax.set_ylabel(None)
             # store and plot if necessary
             for extension in extensions:
-                name = f'kernels_{dataset.key}.{extension}'
-                file = os.path.join(folder, 'exports', name)
+                file = f'{folder}/exports/kernels_{dataset.key}.{extension}'
                 fig.savefig(file, bbox_inches='tight')
             if plot:
                 config = dataset.configuration

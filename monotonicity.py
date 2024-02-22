@@ -41,7 +41,7 @@ parser.add_argument(
     type=str,
     nargs='+',
     choices=list(datasets),
-    default=['communities', 'census'],
+    default=['communities', 'adult', 'census'],
     help='the dataset on which to run the experiment'
 )
 parser.add_argument(
