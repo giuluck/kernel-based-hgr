@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Iterable, Literal, Tuple
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import seaborn as sns
@@ -240,5 +241,27 @@ class AnalysisExperiment(Experiment):
             folder = f'{folder}/exports'
             os.makedirs(folder, exist_ok=True)
             fig.savefig(f'{folder}/example.{extension}', bbox_inches='tight')
+        if plot:
+            fig.show()
+
+    @staticmethod
+    def overfitting(folder: str, extensions: Iterable[str] = ('png',), plot: bool = False):
+        # sample data
+        rng = np.random.default_rng(0)
+        x = np.arange(15)
+        y = rng.random(size=len(x))
+        # plot data
+        sns.set(context='poster', style='white', font_scale=1.8)
+        fig = plt.figure(figsize=(20, 8), tight_layout=True)
+        ax = fig.gca()
+        sns.scatterplot(x=x, y=y, color='black', s=500, linewidth=1, zorder=2, label='Data Points', ax=ax)
+        sns.lineplot(x=x, y=0.5, color='blue', linestyle='--', linewidth=2, zorder=1, label='Expected g(y)', ax=ax)
+        sns.lineplot(x=x, y=y, color='red', linewidth=2, zorder=1, label='Overfitting g(y)', ax=ax)
+        ax.set(xlabel='a', ylabel='b', xticks=[], yticks=[])
+        # store and plot if necessary
+        for extension in extensions:
+            folder = f'{folder}/exports'
+            os.makedirs(folder, exist_ok=True)
+            fig.savefig(f'{folder}/overfitting.{extension}', bbox_inches='tight')
         if plot:
             fig.show()
