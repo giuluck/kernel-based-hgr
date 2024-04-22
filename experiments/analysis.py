@@ -237,8 +237,8 @@ class AnalysisExperiment(Experiment):
         sns.lineplot(x=b, y=gb, sort=True, linewidth=2, color='black', ax=axes['gb'])
         axes['proj'].scatter(fa, gb, color='black', edgecolor='black', alpha=0.6, s=10)
         # store and plot if necessary
+        folder = f'{folder}/exports'
         for extension in extensions:
-            folder = f'{folder}/exports'
             os.makedirs(folder, exist_ok=True)
             fig.savefig(f'{folder}/example.{extension}', bbox_inches='tight')
         if plot:
@@ -255,12 +255,15 @@ class AnalysisExperiment(Experiment):
         fig = plt.figure(figsize=(20, 8), tight_layout=True)
         ax = fig.gca()
         sns.scatterplot(x=x, y=y, color='black', s=500, linewidth=1, zorder=2, label='Data Points', ax=ax)
-        sns.lineplot(x=x, y=0.5, color='blue', linestyle='--', linewidth=2, zorder=1, label='Expected g(y)', ax=ax)
-        sns.lineplot(x=x, y=y, color='red', linewidth=2, zorder=1, label='Overfitting g(y)', ax=ax)
-        ax.set(xlabel='a', ylabel='b', xticks=[], yticks=[])
+        # sns.lineplot(x=x, y=x, color='blue', linestyle='--', linewidth=2, zorder=1, label='Expected f(a)', ax=ax)
+        sns.lineplot(x=x, y=y, color='red', linewidth=2, zorder=1, label='Transformation f(a)', ax=ax)
+        ax.set_xlabel('a')
+        ax.set_ylabel('b', rotation=0, labelpad=20)
+        ax.set_xticks([])
+        ax.set_yticks([])
         # store and plot if necessary
+        folder = f'{folder}/exports'
         for extension in extensions:
-            folder = f'{folder}/exports'
             os.makedirs(folder, exist_ok=True)
             fig.savefig(f'{folder}/overfitting.{extension}', bbox_inches='tight')
         if plot:
