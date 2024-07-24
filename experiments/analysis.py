@@ -251,7 +251,7 @@ class AnalysisExperiment(Experiment):
         x = np.arange(15)
         y = rng.random(size=len(x))
         # plot data
-        sns.set(context='poster', style='white', font_scale=1.8)
+        sns.set(context='poster', style='whitegrid', font_scale=1.8)
         fig = plt.figure(figsize=(20, 8), tight_layout=True)
         ax = fig.gca()
         sns.scatterplot(x=x, y=y, color='black', s=500, linewidth=1, zorder=2, label='Data Points', ax=ax)
@@ -259,8 +259,9 @@ class AnalysisExperiment(Experiment):
         sns.lineplot(x=x, y=y, color='red', linewidth=2, zorder=1, label='Transformation f(a)', ax=ax)
         ax.set_xlabel('a')
         ax.set_ylabel('b', rotation=0, labelpad=20)
-        ax.set_xticks([])
-        ax.set_yticks([])
+        ax.set_xticks(x, labels=[''] * len(x))
+        ax.set_yticks([0.0, 0.5, 1.0], labels=['', '', ''])
+        ax.set_ylim([-0.05, 1.05])
         # store and plot if necessary
         folder = f'{folder}/exports'
         for extension in extensions:
